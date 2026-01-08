@@ -493,6 +493,7 @@ struct dwrite_fontset
     IDWriteFontSet3 IDWriteFontSet3_iface;
     LONG refcount;
     IDWriteFactory7 *factory;
+    BOOL owns_factory;
 
     struct dwrite_fontset_entry **entries;
     unsigned int count;
@@ -3416,7 +3417,7 @@ static HRESULT fontset_create_from_font_collection(struct dwrite_fontcollection 
 
     if (collection->set.count)
         return fontset_create_from_set(collection->factory, collection->set.entries,
-                collection->set.count, FALSE, (IDWriteFontSet **)fontset);
+                collection->set.count, FALSE, FALSE, (IDWriteFontSet **)fontset);
 
     for (i = 0; i < collection->count; ++i)
         count += collection->family_data[i]->count;
@@ -7488,7 +7489,7 @@ static IDWriteLocalizedStrings * fontset_entry_get_property(struct dwrite_fontse
 }
 
 static void init_fontset(struct dwrite_fontset *object, IDWriteFactory7 *factory,
-       struct dwrite_fontset_entry **entries, unsigned int count, BOOL is_system);
+       struct dwrite_fontset_entry **entries, unsigned int count, BOOL is_system, BOOL owns_factory);
 
 static ULONG WINAPI dwritefontset_Release(IDWriteFontSet3 *iface)
 {
@@ -7500,7 +7501,11 @@ static ULONG WINAPI dwritefontset_Release(IDWriteFontSet3 *iface)
 
     if (!refcount)
     {
-        IDWriteFactory7_Release(set->factory);
+        /* System fontset is weakly cached in the factory, clear the cache before freeing. */
+        if (set->is_system && set->factory)
+            dwritefactory_clear_system_fontset(set->factory, (IDWriteFontSet *)iface);
+        if (set->owns_factory && set->factory)
+            IDWriteFactory7_Release(set->factory);
         for (i = 0; i < set->count; ++i)
             release_fontset_entry(set->entries[i]);
         free(set->entries);
@@ -7681,7 +7686,7 @@ static HRESULT WINAPI dwritefontset_GetMatchingFonts(IDWriteFontSet3 *iface, DWR
         entries = NULL;
     }
 
-    init_fontset(object, set->factory, entries, matched_count, FALSE);
+    init_fontset(object, set->factory, entries, matched_count, FALSE, FALSE);
 
     *filtered_set = (IDWriteFontSet *)&object->IDWriteFontSet3_iface;
 
@@ -7888,19 +7893,21 @@ static HRESULT fontset_create_entry(IDWriteFontFile *file, DWRITE_FONT_FACE_TYPE
 }
 
 static void init_fontset(struct dwrite_fontset *object, IDWriteFactory7 *factory,
-        struct dwrite_fontset_entry **entries, unsigned int count, BOOL is_system)
+        struct dwrite_fontset_entry **entries, unsigned int count, BOOL is_system, BOOL owns_factory)
 {
     object->IDWriteFontSet3_iface.lpVtbl = &fontsetvtbl;
     object->refcount = 1;
     object->factory = factory;
-    IDWriteFactory7_AddRef(object->factory);
+    object->owns_factory = owns_factory;
+    if (object->owns_factory && object->factory)
+        IDWriteFactory7_AddRef(object->factory);
     object->entries = entries;
     object->count = count;
     object->is_system = is_system;
 }
 
 HRESULT fontset_create_from_set(IDWriteFactory7 *factory, struct dwrite_fontset_entry **src_entries,
-        unsigned int count, BOOL is_system, IDWriteFontSet **ret)
+        unsigned int count, BOOL is_system, BOOL owns_factory, IDWriteFontSet **ret)
 {
     struct dwrite_fontset_entry **entries = NULL;
     struct dwrite_fontset *object;
@@ -7922,7 +7929,7 @@ HRESULT fontset_create_from_set(IDWriteFactory7 *factory, struct dwrite_fontset_
         for (i = 0; i < count; ++i)
             entries[i] = addref_fontset_entry(src_entries[i]);
     }
-    init_fontset(object, factory, entries, count, is_system);
+    init_fontset(object, factory, entries, count, is_system, owns_factory);
 
     *ret = (IDWriteFontSet *)&object->IDWriteFontSet3_iface;
 
@@ -7951,7 +7958,7 @@ static HRESULT fontset_create_from_font_data(IDWriteFactory7 *factory, struct dw
                     fonts[i]->simulations, &entries[i]);
         }
     }
-    init_fontset(object, factory, entries, count, FALSE);
+    init_fontset(object, factory, entries, count, FALSE, FALSE);
 
     *ret = (IDWriteFontSet1 *)&object->IDWriteFontSet3_iface;
 
@@ -8105,7 +8112,7 @@ static HRESULT WINAPI dwritefontsetbuilder_CreateFontSet(IDWriteFontSetBuilder2 
 
     TRACE("%p, %p.\n", iface, fontset);
 
-    return fontset_create_from_set(builder->factory, builder->entries, builder->count, builder->is_system, fontset);
+    return fontset_create_from_set(builder->factory, builder->entries, builder->count, builder->is_system, TRUE, fontset);
 }
 
 static HRESULT WINAPI dwritefontsetbuilder1_AddFontFile(IDWriteFontSetBuilder2 *iface, IDWriteFontFile *file)

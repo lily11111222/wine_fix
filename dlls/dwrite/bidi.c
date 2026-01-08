@@ -192,14 +192,12 @@ typedef struct tagStackItem
 
 #define pop_stack() do { stack_top++; } while(0)
 
-#define valid_level(x) (x <= MAX_DEPTH && overflow_isolate_count == 0 && overflow_embedding_count == 0)
+#define valid_level(x) (x <= MAX_DEPTH && overflow_embedding_count == 0)
 
 static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, UINT8 baselevel)
 {
     /* X1 */
-    int overflow_isolate_count = 0;
     int overflow_embedding_count = 0;
-    int valid_isolate_count = 0;
     unsigned int i;
 
     StackItem stack[MAX_DEPTH+2];
@@ -223,7 +221,7 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
             c->resolved = valid_level(least_odd) ? least_odd : stack[stack_top].level;
             if (valid_level(least_odd))
                 push_stack(least_odd, NI, FALSE);
-            else if (overflow_isolate_count == 0)
+            else
                 overflow_embedding_count++;
             break;
 
@@ -233,7 +231,7 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
             c->resolved = valid_level(least_even) ? least_even : stack[stack_top].level;
             if (valid_level(least_even))
                 push_stack(least_even, NI, FALSE);
-            else if (overflow_isolate_count == 0)
+            else
                 overflow_embedding_count++;
             break;
 
@@ -243,7 +241,7 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
             c->resolved = stack[stack_top].level;
             if (valid_level(least_odd))
                 push_stack(least_odd, R, FALSE);
-            else if (overflow_isolate_count == 0)
+            else
                 overflow_embedding_count++;
             break;
 
@@ -253,99 +251,16 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
             c->resolved = stack[stack_top].level;
             if (valid_level(least_even))
                 push_stack(least_even, L, FALSE);
-            else if (overflow_isolate_count == 0)
+            else
                 overflow_embedding_count++;
             break;
 
-        /* X5a */
+        /* X5a-X5c */
         case RLI:
-            least_odd = get_greater_odd_level(stack[stack_top].level);
-            c->resolved = stack[stack_top].level;
-            if (valid_level(least_odd))
-            {
-                valid_isolate_count++;
-                push_stack(least_odd, NI, TRUE);
-            }
-            else
-                overflow_isolate_count++;
-            break;
-
-        /* X5b */
         case LRI:
-            least_even = get_greater_even_level(stack[stack_top].level);
-            c->resolved = stack[stack_top].level;
-            if (valid_level(least_even))
-            {
-                valid_isolate_count++;
-                push_stack(least_even, NI, TRUE);
-            }
-            else
-                overflow_isolate_count++;
-            break;
-
-        /* X5c */
         case FSI:
-        {
-            UINT8 new_level = 0;
-            int skipping = 0;
-            int j;
-
             c->resolved = stack[stack_top].level;
-            for (j = i+1; j < count; j++)
-            {
-                const struct bidi_char *p = &chars[j];
-
-                if (p->bidi_class == LRI || p->bidi_class == RLI || p->bidi_class == FSI)
-                {
-                    skipping++;
-                    continue;
-                }
-                else if (p->bidi_class == PDI)
-                {
-                    if (skipping)
-                        skipping --;
-                    else
-                        break;
-                    continue;
-                }
-
-                if (skipping) continue;
-
-                if (p->bidi_class == L)
-                {
-                    new_level = 0;
-                    break;
-                }
-                else if (p->bidi_class == R || p->bidi_class == AL)
-                {
-                    new_level = 1;
-                    break;
-                }
-            }
-            if (odd(new_level))
-            {
-                least_odd = get_greater_odd_level(stack[stack_top].level);
-                if (valid_level(least_odd))
-                {
-                    valid_isolate_count++;
-                    push_stack(least_odd, NI, TRUE);
-                }
-                else
-                    overflow_isolate_count++;
-            }
-            else
-            {
-                least_even = get_greater_even_level(stack[stack_top].level);
-                if (valid_level(least_even))
-                {
-                    valid_isolate_count++;
-                    push_stack(least_even, NI, TRUE);
-                }
-                else
-                    overflow_isolate_count++;
-            }
             break;
-        }
 
         /* X6 */
         case ON:
@@ -367,23 +282,14 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
 
         /* X6a */
         case PDI:
-            if (overflow_isolate_count) overflow_isolate_count--;
-            else if (!valid_isolate_count) {/* do nothing */}
-            else
-            {
-                overflow_embedding_count = 0;
-                while (!stack[stack_top].isolate) pop_stack();
-                pop_stack();
-                valid_isolate_count--;
-            }
             c->resolved = stack[stack_top].level;
             break;
 
         /* X7 */
         case PDF:
             c->resolved = stack[stack_top].level;
-            if (overflow_isolate_count) {/* do nothing */}
-            else if (overflow_embedding_count) overflow_embedding_count--;
+            if (overflow_embedding_count)
+                overflow_embedding_count--;
             else if (!stack[stack_top].isolate && stack_top < (MAX_DEPTH+1))
                 pop_stack();
             break;
@@ -407,6 +313,10 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
             case RLO:
             case LRO:
             case PDF:
+            case LRI:
+            case RLI:
+            case FSI:
+            case PDI:
                 chars[i].bidi_class = BN;
                 break;
             default:
@@ -887,7 +797,6 @@ static inline BOOL is_rule_L1_reset_class(UINT8 class)
     case RLE:
     case LRO:
     case RLO:
-    case PDF:
     case BN:
         return TRUE;
     default:

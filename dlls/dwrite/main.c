@@ -608,6 +608,7 @@ struct dwritefactory
         FILETIME timestamp;
         struct dwrite_fontset_entry **entries;
         unsigned int count;
+        IDWriteFontSet *fontset; /* weak cache, do not hold a reference */
     } system_set;
 
     IDWriteFontFileLoader *localfontfileloader;
@@ -649,7 +650,20 @@ static void factory_cleanup_fontset(struct dwritefactory *factory)
 
     for (i = 0; i < factory->system_set.count; ++i)
         release_fontset_entry(factory->system_set.entries[i]);
-    memset(&factory->system_set, 0, sizeof(factory->system_set));
+    free(factory->system_set.entries);
+    factory->system_set.entries = NULL;
+    factory->system_set.count = 0;
+    factory->system_set.fontset = NULL;
+    memset(&factory->system_set.timestamp, 0, sizeof(factory->system_set.timestamp));
+}
+
+void dwritefactory_clear_system_fontset(IDWriteFactory7 *iface, IDWriteFontSet *fontset)
+{
+    struct dwritefactory *factory = impl_from_IDWriteFactory7(iface);
+    EnterCriticalSection(&factory->cs);
+    if (factory->system_set.fontset == fontset)
+        factory->system_set.fontset = NULL;
+    LeaveCriticalSection(&factory->cs);
 }
 
 static void release_dwritefactory(struct dwritefactory *factory)
@@ -1053,8 +1067,16 @@ static HRESULT WINAPI dwritefactory_CreateFontFace(IDWriteFactory7 *iface, DWRIT
 
     *fontface = NULL;
 
+    /* Windows returns UNSUPPORTEDOPERATION for RAW_CFF here. */
+    if (req_facetype == DWRITE_FONT_FACE_TYPE_RAW_CFF)
+        return DWRITE_E_UNSUPPORTEDOPERATION;
+
     if (!is_face_type_supported(req_facetype))
-        return E_INVALIDARG;
+    {
+        /* Windows accepts UNKNOWN and auto-detects the face type. */
+        if (req_facetype != DWRITE_FONT_FACE_TYPE_UNKNOWN)
+            return E_INVALIDARG;
+    }
 
     if (req_facetype != DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION && index)
         return E_INVALIDARG;
@@ -1076,6 +1098,9 @@ static HRESULT WINAPI dwritefactory_CreateFontFace(IDWriteFactory7 *iface, DWRIT
         hr = E_FAIL;
         goto failed;
     }
+
+    if (req_facetype == DWRITE_FONT_FACE_TYPE_UNKNOWN)
+        req_facetype = face_type;
 
     if (face_type != req_facetype) {
         hr = DWRITE_E_FILEFORMAT;
@@ -1702,9 +1727,9 @@ static HRESULT factory_create_system_fontset(struct dwritefactory *factory, cons
 HRESULT create_system_fontset(IDWriteFactory7 *factory_iface, REFIID riid, void **obj)
 {
     struct dwritefactory *factory = impl_from_IDWriteFactory7(factory_iface);
-    IDWriteFontSet *fontset;
     FILETIME timestamp;
     HRESULT hr = S_OK;
+    BOOL created = FALSE;
 
     *obj = NULL;
 
@@ -1715,19 +1740,29 @@ HRESULT create_system_fontset(IDWriteFactory7 *factory_iface, REFIID riid, void 
     if (CompareFileTime(&timestamp, &factory->system_set.timestamp) > 0)
         hr = factory_create_system_fontset(factory, &timestamp);
 
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && !factory->system_set.fontset)
     {
         hr = fontset_create_from_set(factory_iface, factory->system_set.entries,
-                factory->system_set.count, TRUE, &fontset);
+                factory->system_set.count, TRUE, TRUE, &factory->system_set.fontset);
+        created = SUCCEEDED(hr);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        if (IsEqualIID(riid, &IID_IDWriteFontSet))
+        {
+            IDWriteFontSet *ret = factory->system_set.fontset;
+
+            /* For a newly created set refcount is 1 already. For cached set, AddRef for caller. */
+            if (ret && !created)
+                IDWriteFontSet_AddRef(ret);
+            *obj = ret;
+        }
+        else
+            hr = IDWriteFontSet_QueryInterface(factory->system_set.fontset, riid, obj);
     }
 
     LeaveCriticalSection(&factory->cs);
-
-    if (SUCCEEDED(hr))
-    {
-        hr = IDWriteFontSet_QueryInterface(fontset, riid, obj);
-        IDWriteFontSet_Release(fontset);
-    }
 
     return hr;
 }

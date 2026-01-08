@@ -382,13 +382,14 @@ extern HRESULT compute_glyph_origins(DWRITE_GLYPH_RUN const *run, DWRITE_MEASURI
 extern HRESULT create_font_collection_from_set(IDWriteFactory7 *factory, IDWriteFontSet *set,
         DWRITE_FONT_FAMILY_MODEL family_model, REFGUID riid, void **ret);
 extern HRESULT create_system_fontset(IDWriteFactory7 *factory, REFIID riid, void **obj);
+extern void dwritefactory_clear_system_fontset(IDWriteFactory7 *factory, IDWriteFontSet *fontset);
 
 struct dwrite_fontset_entry;
 extern void release_fontset_entry(struct dwrite_fontset_entry *);
 extern HRESULT fontset_builder_get_entries(IDWriteFontSetBuilder2 *iface, struct dwrite_fontset_entry ***ret,
         unsigned int *count);
 extern HRESULT fontset_create_from_set(IDWriteFactory7 *factory, struct dwrite_fontset_entry **src_entries,
-        unsigned int count, BOOL is_system, IDWriteFontSet **ret);
+        unsigned int count, BOOL is_system, BOOL owns_factory, IDWriteFontSet **ret);
 
 struct dwrite_fontface;
 
