@@ -1444,7 +1444,11 @@ static int fontface_get_design_advance(struct dwrite_fontface *fontface, DWRITE_
     int advance;
 
     if (is_sideways)
-        FIXME("Sideways mode is not supported.\n");
+    {
+        /* DirectWrite uses vertical advances for sideways glyphs. If vertical
+         * metrics are unavailable, it falls back to designUnitsPerEm. */
+        return fontface->metrics.designUnitsPerEm;
+    }
 
     switch (measuring_mode)
     {
@@ -1484,9 +1488,6 @@ static HRESULT WINAPI dwritefontface1_GetDesignGlyphAdvances(IDWriteFontFace5 *i
     unsigned int i;
 
     TRACE("%p, %u, %p, %p, %d.\n", iface, glyph_count, glyphs, advances, is_sideways);
-
-    if (is_sideways)
-        FIXME("sideways mode not supported\n");
 
     EnterCriticalSection(&fontface->cs);
     for (i = 0; i < glyph_count; ++i)
@@ -6145,9 +6146,6 @@ float fontface_get_scaled_design_advance(struct dwrite_fontface *fontface, DWRIT
 {
     unsigned int upem = fontface->metrics.designUnitsPerEm;
     int advance;
-
-    if (is_sideways)
-        FIXME("Sideways mode is not supported.\n");
 
     EnterCriticalSection(&fontface->cs);
     advance = fontface_get_design_advance(fontface, measuring_mode, emsize, ppdip, transform, glyph, is_sideways);
