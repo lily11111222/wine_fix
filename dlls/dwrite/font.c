@@ -5612,8 +5612,11 @@ static HRESULT create_local_cached_stream(const void *key, UINT32 key_size, stru
     file = CreateFileW(refkey->name, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
             NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) {
-        WARN_(dwrite_file)("Failed to open the file %s, error %ld.\n", debugstr_w(refkey->name), GetLastError());
-        return E_FAIL;
+        DWORD err = GetLastError();
+        WARN_(dwrite_file)("Failed to open the file %s, error %ld.\n", debugstr_w(refkey->name), err);
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND || err == ERROR_INVALID_NAME)
+            return DWRITE_E_FILENOTFOUND;
+        return HRESULT_FROM_WIN32(err);
     }
 
     GetFileSizeEx(file, &size);

@@ -3521,7 +3521,7 @@ static void test_CreateFontFileReference(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
 
     hr = IDWriteFontFileLoader_CreateStreamFromKey(loader, key1, key1_size, &stream);
-    todo_wine
+    /* todo_wine */
     ok(hr == DWRITE_E_FILENOTFOUND, "Unexpected hr %#lx.\n",hr);
 
     IDWriteFontFileLoader_Release(loader);
