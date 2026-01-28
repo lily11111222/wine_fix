@@ -590,6 +590,7 @@ struct fileloader
     struct list entry;
     struct list fontfaces;
     IDWriteFontFileLoader *loader;
+    BOOL registered;
 };
 
 struct dwritefactory
@@ -714,13 +715,25 @@ static struct fileloader *factory_get_file_loader(struct dwritefactory *factory,
     struct fileloader *entry, *found = NULL;
 
     LIST_FOR_EACH_ENTRY(entry, &factory->file_loaders, struct fileloader, entry) {
-        if (entry->loader == loader) {
+        if (entry->loader == loader && entry->registered) {
             found = entry;
             break;
         }
     }
 
     return found;
+}
+
+static struct fileloader *factory_get_cached_file_loader(struct dwritefactory *factory, IDWriteFontFileLoader *loader)
+{
+    struct fileloader *entry;
+
+    LIST_FOR_EACH_ENTRY(entry, &factory->file_loaders, struct fileloader, entry) {
+        if (entry->loader == loader)
+            return entry;
+    }
+
+    return NULL;
 }
 
 static struct collectionloader *factory_get_collection_loader(struct dwritefactory *factory,
@@ -982,10 +995,20 @@ HRESULT factory_get_cached_fontface(IDWriteFactory7 *iface, IDWriteFontFile * co
         IDWriteFontFileLoader_Release(loader);
     }
     else {
-        struct fileloader *fileloader = factory_get_file_loader(factory, loader);
-        IDWriteFontFileLoader_Release(loader);
-        if (!fileloader)
-            return E_INVALIDARG;
+        struct fileloader *fileloader = factory_get_cached_file_loader(factory, loader);
+        if (!fileloader) {
+            if (!(fileloader = malloc(sizeof(*fileloader)))) {
+                IDWriteFontFileLoader_Release(loader);
+                return E_OUTOFMEMORY;
+            }
+            fileloader->loader = loader;
+            fileloader->registered = FALSE;
+            list_init(&fileloader->fontfaces);
+            list_add_tail(&factory->file_loaders, &fileloader->entry);
+        }
+        else {
+            IDWriteFontFileLoader_Release(loader);
+        }
         fontfaces = &fileloader->fontfaces;
     }
 
@@ -1187,16 +1210,19 @@ static HRESULT WINAPI dwritefactory_RegisterFontFileLoader(IDWriteFactory7 *ifac
     if (!loader)
         return E_INVALIDARG;
 
-    if (factory_get_file_loader(factory, loader))
+    entry = factory_get_cached_file_loader(factory, loader);
+    if (entry && entry->registered)
         return DWRITE_E_ALREADYREGISTERED;
 
-    if (!(entry = malloc(sizeof(*entry))))
-        return E_OUTOFMEMORY;
-
-    entry->loader = loader;
-    list_init(&entry->fontfaces);
-    IDWriteFontFileLoader_AddRef(loader);
-    list_add_tail(&factory->file_loaders, &entry->entry);
+    if (!entry) {
+        if (!(entry = malloc(sizeof(*entry))))
+            return E_OUTOFMEMORY;
+        entry->loader = loader;
+        list_init(&entry->fontfaces);
+        list_add_tail(&factory->file_loaders, &entry->entry);
+        IDWriteFontFileLoader_AddRef(loader);
+    }
+    entry->registered = TRUE;
 
     return S_OK;
 }

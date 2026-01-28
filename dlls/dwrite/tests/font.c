@@ -3389,7 +3389,7 @@ if (0) { /* crashes on win10 */
     /* file was created with different factory */
     face2 = NULL;
     hr = IDWriteFactory_CreateFontFace(factory2, face_type, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &face2);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (face2) {
     IDWriteFontFace_Release(face2);
