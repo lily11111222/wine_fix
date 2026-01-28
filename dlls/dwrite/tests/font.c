@@ -6201,7 +6201,7 @@ static void test_CreateGlyphRunAnalysis(void)
 
         hr = IDWriteGlyphRunAnalysis_GetAlphaBlendParams(analysis, params, &gamma, &contrast, &cleartype_level);
         ok(hr == S_OK, "Failed to get alpha blend params, hr %#lx.\n", hr);
-        todo_wine
+        /* todo_wine */
         ok(cleartype_level == 0.0f, "Unexpected cleartype level %f.\n", cleartype_level);
 
         IDWriteRenderingParams_Release(params);
