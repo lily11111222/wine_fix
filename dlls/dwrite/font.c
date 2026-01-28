@@ -342,6 +342,7 @@ struct dwrite_fontcollection
     LONG refcount;
 
     IDWriteFactory7 *factory;
+    unsigned int attached_to_factory : 1;
     DWRITE_FONT_FAMILY_MODEL family_model;
     struct dwrite_fontfamily_data **family_data;
     size_t size;
@@ -493,12 +494,12 @@ struct dwrite_fontset
     IDWriteFontSet3 IDWriteFontSet3_iface;
     LONG refcount;
     IDWriteFactory7 *factory;
-    BOOL owns_factory;
 
     struct dwrite_fontset_entry **entries;
     unsigned int count;
 
     BOOL is_system;
+    BOOL owns_factory;
 };
 
 struct dwrite_fontset_builder
@@ -3274,7 +3275,8 @@ static ULONG WINAPI dwritefontcollection_Release(IDWriteFontCollection3 *iface)
 
     if (!refcount)
     {
-        factory_detach_fontcollection(collection->factory, iface);
+        if (collection->attached_to_factory)
+            factory_detach_fontcollection(collection->factory, iface);
         for (i = 0; i < collection->count; ++i)
             release_fontfamily_data(collection->family_data[i]);
         for (i = 0; i < collection->set.count; ++i)
@@ -3569,12 +3571,14 @@ static HRESULT fontcollection_add_family(struct dwrite_fontcollection *collectio
 }
 
 static void init_font_collection(struct dwrite_fontcollection *collection, IDWriteFactory7 *factory,
-        DWRITE_FONT_FAMILY_MODEL family_model)
+        DWRITE_FONT_FAMILY_MODEL family_model, BOOL attached_to_factory)
 {
     collection->IDWriteFontCollection3_iface.lpVtbl = &fontcollectionvtbl;
     collection->refcount = 1;
     collection->factory = factory;
-    IDWriteFactory7_AddRef(collection->factory);
+    collection->attached_to_factory = attached_to_factory;
+    if (attached_to_factory)
+        IDWriteFactory7_AddRef(collection->factory);
     collection->family_model = family_model;
 }
 
@@ -4719,8 +4723,8 @@ HRESULT create_font_collection(IDWriteFactory7 *factory, IDWriteFontFileEnumerat
         hr = IDWriteFontSetBuilder1_CreateFontSet(builder, &fontset);
 
     if (SUCCEEDED(hr))
-        hr = create_font_collection_from_set(factory, fontset, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE,
-                 &IID_IDWriteFontCollection3, (void **)ret);
+        hr = create_font_collection_from_set(factory, fontset, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE, FALSE,
+                &IID_IDWriteFontCollection3, (void **)ret);
 
     LIST_FOR_EACH_ENTRY_SAFE(fileenum, fileenum2, &scannedfiles, struct fontfile_enum, entry)
     {
@@ -4784,7 +4788,7 @@ static HRESULT collection_add_font_entry(struct dwrite_fontcollection *collectio
 }
 
 HRESULT create_font_collection_from_set(IDWriteFactory7 *factory, IDWriteFontSet *fontset,
-        DWRITE_FONT_FAMILY_MODEL family_model, REFGUID riid, void **ret)
+        DWRITE_FONT_FAMILY_MODEL family_model, BOOL attached_to_factory, REFGUID riid, void **ret)
 {
     struct dwrite_fontset *set = unsafe_impl_from_IDWriteFontSet(fontset);
     struct dwrite_fontcollection *collection;
@@ -4802,7 +4806,7 @@ HRESULT create_font_collection_from_set(IDWriteFactory7 *factory, IDWriteFontSet
         return E_OUTOFMEMORY;
     }
 
-    init_font_collection(collection, factory, family_model);
+    init_font_collection(collection, factory, family_model, attached_to_factory);
 
     collection->set.count = set->count;
     for (i = 0; i < set->count; ++i)
@@ -4882,7 +4886,8 @@ HRESULT get_system_fontcollection(IDWriteFactory7 *factory, DWRITE_FONT_FAMILY_M
 
     if (SUCCEEDED(hr = create_system_fontset(factory, &IID_IDWriteFontSet, (void **)&fontset)))
     {
-        hr = create_font_collection_from_set(factory, fontset, family_model, &IID_IDWriteFontCollection, (void **)collection);
+        hr = create_font_collection_from_set(factory, fontset, family_model, TRUE,
+                &IID_IDWriteFontCollection, (void **)collection);
         IDWriteFontSet_Release(fontset);
     }
 
@@ -4990,7 +4995,7 @@ HRESULT get_eudc_fontcollection(IDWriteFactory7 *factory, IDWriteFontCollection3
     if (!(collection = calloc(1, sizeof(*collection))))
         return E_OUTOFMEMORY;
 
-    init_font_collection(collection, factory, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE);
+    init_font_collection(collection, factory, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE, TRUE);
 
     *ret = &collection->IDWriteFontCollection3_iface;
 
@@ -7501,11 +7506,11 @@ static ULONG WINAPI dwritefontset_Release(IDWriteFontSet3 *iface)
 
     if (!refcount)
     {
-        /* System fontset is weakly cached in the factory, clear the cache before freeing. */
-        if (set->is_system && set->factory)
+        if (set->owns_factory)
+        {
             dwritefactory_clear_system_fontset(set->factory, (IDWriteFontSet *)iface);
-        if (set->owns_factory && set->factory)
             IDWriteFactory7_Release(set->factory);
+        }
         for (i = 0; i < set->count; ++i)
             release_fontset_entry(set->entries[i]);
         free(set->entries);
@@ -7686,7 +7691,7 @@ static HRESULT WINAPI dwritefontset_GetMatchingFonts(IDWriteFontSet3 *iface, DWR
         entries = NULL;
     }
 
-    init_fontset(object, set->factory, entries, matched_count, FALSE, FALSE);
+    init_fontset(object, set->factory, entries, matched_count, FALSE, TRUE);
 
     *filtered_set = (IDWriteFontSet *)&object->IDWriteFontSet3_iface;
 
@@ -7899,7 +7904,7 @@ static void init_fontset(struct dwrite_fontset *object, IDWriteFactory7 *factory
     object->refcount = 1;
     object->factory = factory;
     object->owns_factory = owns_factory;
-    if (object->owns_factory && object->factory)
+    if (owns_factory)
         IDWriteFactory7_AddRef(object->factory);
     object->entries = entries;
     object->count = count;
@@ -7958,7 +7963,7 @@ static HRESULT fontset_create_from_font_data(IDWriteFactory7 *factory, struct dw
                     fonts[i]->simulations, &entries[i]);
         }
     }
-    init_fontset(object, factory, entries, count, FALSE, FALSE);
+    init_fontset(object, factory, entries, count, FALSE, TRUE);
 
     *ret = (IDWriteFontSet1 *)&object->IDWriteFontSet3_iface;
 

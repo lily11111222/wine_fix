@@ -380,7 +380,7 @@ extern HRESULT create_fontset_builder(IDWriteFactory7 *factory, BOOL is_system, 
 extern HRESULT compute_glyph_origins(DWRITE_GLYPH_RUN const *run, DWRITE_MEASURING_MODE measuring_mode,
         D2D1_POINT_2F baseline_origin, DWRITE_MATRIX const *transform, D2D1_POINT_2F *origins);
 extern HRESULT create_font_collection_from_set(IDWriteFactory7 *factory, IDWriteFontSet *set,
-        DWRITE_FONT_FAMILY_MODEL family_model, REFGUID riid, void **ret);
+        DWRITE_FONT_FAMILY_MODEL family_model, BOOL attached_to_factory, REFGUID riid, void **ret);
 extern HRESULT create_system_fontset(IDWriteFactory7 *factory, REFIID riid, void **obj);
 extern void dwritefactory_clear_system_fontset(IDWriteFactory7 *factory, IDWriteFontSet *fontset);
 

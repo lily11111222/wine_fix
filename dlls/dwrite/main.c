@@ -1786,7 +1786,7 @@ static HRESULT WINAPI dwritefactory3_CreateFontCollectionFromFontSet(IDWriteFact
 {
     TRACE("%p, %p, %p.\n", iface, fontset, collection);
 
-    return create_font_collection_from_set(iface, fontset, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE,
+    return create_font_collection_from_set(iface, fontset, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE, FALSE,
             &IID_IDWriteFontCollection1, (void **)collection);
 }
 
@@ -1979,7 +1979,8 @@ static HRESULT WINAPI dwritefactory6_CreateFontCollectionFromFontSet(IDWriteFact
 {
     TRACE("%p, %p, %d, %p.\n", iface, fontset, family_model, collection);
 
-    return create_font_collection_from_set(iface, fontset, family_model, &IID_IDWriteFontCollection2, (void **)collection);
+    return create_font_collection_from_set(iface, fontset, family_model, FALSE,
+            &IID_IDWriteFontCollection2, (void **)collection);
 }
 
 static HRESULT WINAPI dwritefactory6_CreateFontSetBuilder(IDWriteFactory7 *iface, IDWriteFontSetBuilder2 **builder)
