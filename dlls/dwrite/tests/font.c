@@ -6190,7 +6190,7 @@ static void test_CreateGlyphRunAnalysis(void)
         ok(hr == DWRITE_E_UNSUPPORTEDOPERATION, "Unexpected hr %#lx.\n", hr);
 
         hr = IDWriteGlyphRunAnalysis_CreateAlphaTexture(analysis, DWRITE_TEXTURE_CLEARTYPE_3x1, &rect, bits, size - 1);
-        todo_wine
+        /* todo_wine */
         ok(hr == DWRITE_E_UNSUPPORTEDOPERATION, "Unexpected hr %#lx.\n", hr);
 
         free(bits);
@@ -6271,7 +6271,7 @@ static void test_CreateGlyphRunAnalysis(void)
         ok(hr == DWRITE_E_UNSUPPORTEDOPERATION, "Unexpected hr %#lx.\n", hr);
 
         hr = IDWriteGlyphRunAnalysis_CreateAlphaTexture(analysis, DWRITE_TEXTURE_CLEARTYPE_3x1, &rect, bits, size - 1);
-        todo_wine
+        /* todo_wine */
         ok(hr == DWRITE_E_UNSUPPORTEDOPERATION, "Unexpected hr %#lx.\n", hr);
 
         free(bits);

@@ -6040,17 +6040,24 @@ static HRESULT WINAPI glyphrunanalysis_CreateAlphaTexture(IDWriteGlyphRunAnalysi
     if (!bounds || !bitmap || (UINT32)type > DWRITE_TEXTURE_CLEARTYPE_3x1)
         return E_INVALIDARG;
 
+    if (analysis->texture_type != type)
+    {
+        /* ALIASED can still report insufficient buffer on mismatch */
+        if (type == DWRITE_TEXTURE_ALIASED_1x1)
+        {
+            required = (bounds->right - bounds->left) * (bounds->bottom - bounds->top);
+            if (size < required)
+                return E_NOT_SUFFICIENT_BUFFER;
+        }
+        return DWRITE_E_UNSUPPORTEDOPERATION;
+    }
     /* make sure buffer is large enough for requested texture type */
     required = (bounds->right - bounds->left) * (bounds->bottom - bounds->top);
-    if (analysis->texture_type == DWRITE_TEXTURE_CLEARTYPE_3x1)
+    if (type == DWRITE_TEXTURE_CLEARTYPE_3x1)
         required *= 3;
 
     if (size < required)
         return E_NOT_SUFFICIENT_BUFFER;
-
-    /* validate requested texture type */
-    if (analysis->texture_type != type)
-        return DWRITE_E_UNSUPPORTEDOPERATION;
 
     memset(bitmap, 0, size);
     glyphrunanalysis_get_texturebounds(analysis, &runbounds);
