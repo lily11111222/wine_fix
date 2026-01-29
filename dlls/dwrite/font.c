@@ -353,6 +353,7 @@ struct dwrite_fontcollection
         struct dwrite_fontset_entry **entries;
         unsigned int count;
     } set;
+    HANDLE expiration_event;
 };
 
 struct dwrite_fontfamily
@@ -3284,6 +3285,8 @@ static ULONG WINAPI dwritefontcollection_Release(IDWriteFontCollection3 *iface)
         for (i = 0; i < collection->set.count; ++i)
             release_fontset_entry(collection->set.entries[i]);
         free(collection->family_data);
+        if (collection->expiration_event)
+            CloseHandle(collection->expiration_event);
         free(collection);
     }
 
@@ -3518,9 +3521,25 @@ static HRESULT WINAPI dwritefontcollection2_GetFontSet(IDWriteFontCollection3 *i
 
 static HANDLE WINAPI dwritefontcollection3_GetExpirationEvent(IDWriteFontCollection3 *iface)
 {
-    FIXME("%p.\n", iface);
+    struct dwrite_fontcollection *collection = impl_from_IDWriteFontCollection3(iface);
+    HANDLE event = collection->expiration_event;
 
-    return NULL;
+    TRACE("%p.\n", iface);
+
+    if (!event)
+    {
+        HANDLE new_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+        if (!new_event)
+            return NULL;
+
+        event = InterlockedCompareExchangePointer((void **)&collection->expiration_event, new_event, NULL);
+        if (event)
+            CloseHandle(new_event);
+        else
+            event = new_event;
+    }
+
+    return event;
 }
 
 static const IDWriteFontCollection3Vtbl fontcollectionvtbl =

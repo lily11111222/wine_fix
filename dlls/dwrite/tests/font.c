@@ -2651,7 +2651,7 @@ static void test_system_fontcollection(void)
         HANDLE event;
 
         event = IDWriteFontCollection3_GetExpirationEvent(collection3);
-        todo_wine
+        /* todo_wine */
         ok(!!event, "Expected event handle.\n");
 
         check_familymodel(collection3, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE);
@@ -10360,7 +10360,7 @@ static void test_expiration_event(void)
     IDWriteFontCollection3_Release(collection3);
 
     event = get_collection_expiration_event(collection);
-    todo_wine
+    /* todo_wine */
     ok(!!event, "Unexpected event handle.\n");
 
     /* Compare handles with another isolated factory. */
@@ -10369,10 +10369,10 @@ static void test_expiration_event(void)
     hr = IDWriteFactory_GetSystemFontCollection(factory2, &collection2, FALSE);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     event2 = get_collection_expiration_event(collection2);
-todo_wine {
+    /* todo_wine */
     ok(!!event2, "Unexpected event handle.\n");
+    /* todo_wine */
     ok(event != event2, "Unexpected event handle.\n");
-}
     IDWriteFontCollection_Release(collection2);
 
     IDWriteFontCollection_Release(collection);
