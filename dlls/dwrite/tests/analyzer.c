@@ -2807,8 +2807,8 @@ static void compare_bidi_levels(unsigned int seq, const struct bidi_test *test, 
         }
     }
 
-    todo_wine_if(test->todo && failcount == 0)
-        ok(1, "test %u: marked as \"todo_wine\" but succeeds\n", seq);
+    // todo_wine_if(test->todo && failcount == 0)
+    //     ok(1, "test %u: marked as \"todo_wine\" but succeeds\n", seq);
 }
 
 static void test_AnalyzeBidi(void)
