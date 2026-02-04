@@ -9848,7 +9848,7 @@ static void test_fontsetbuilder(void)
         ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
 
         count = IDWriteFontFaceReference1_GetFontAxisValueCount(ref1);
-        todo_wine
+        /*todo_wine*/
         ok(count == 4, "Unexpected axis count %u.\n", count);
 
     if (count == 4)
@@ -9953,7 +9953,7 @@ static void test_fontsetbuilder(void)
                 if (id == DWRITE_FONT_PROPERTY_ID_WEIGHT || id == DWRITE_FONT_PROPERTY_ID_STRETCH
                         || id == DWRITE_FONT_PROPERTY_ID_STYLE)
                 {
-                    todo_wine
+                    /* todo_wine */
                     ok(exists, "Property %u expected to exist.\n", id);
                 }
 

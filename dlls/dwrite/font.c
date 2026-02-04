@@ -7489,6 +7489,7 @@ static IDWriteLocalizedStrings * fontset_entry_get_property(struct dwrite_fontse
 {
     struct file_stream_desc stream_desc = { 0 };
     IDWriteLocalizedStrings *value;
+    HRESULT hr;
 
     assert(property > DWRITE_FONT_PROPERTY_ID_NONE && property <= DWRITE_FONT_PROPERTY_ID_TYPOGRAPHIC_FACE_NAME);
 
@@ -7515,6 +7516,53 @@ static IDWriteLocalizedStrings * fontset_entry_get_property(struct dwrite_fontse
         opentype_get_font_info_strings(&stream_desc, DWRITE_INFORMATIONAL_STRING_SUPPORTED_SCRIPT_LANGUAGE_TAG, &value);
     else if (property == DWRITE_FONT_PROPERTY_ID_WIN32_FAMILY_NAME)
         opentype_get_font_info_strings(&stream_desc, DWRITE_INFORMATIONAL_STRING_WIN32_FAMILY_NAMES, &value);
+    else if (property == DWRITE_FONT_PROPERTY_ID_WEIGHT || property == DWRITE_FONT_PROPERTY_ID_STRETCH
+            || property == DWRITE_FONT_PROPERTY_ID_STYLE)
+    {
+        struct dwrite_font_data *font_data = NULL;
+        struct fontface_desc desc = { 0 };
+        unsigned int ivalue = 0;
+        WCHAR numW[16];
+
+        desc.face_type = entry->face_type;
+        desc.file = entry->file;
+        desc.stream = stream_desc.stream;
+        desc.index = entry->face_index;
+        desc.simulations = entry->simulations;
+
+        if (SUCCEEDED(hr = init_font_data(&desc, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE, &font_data)))
+        {
+            DWRITE_FONT_WEIGHT weight = font_data->weight;
+            DWRITE_FONT_STYLE style = font_data->style;
+
+            if (entry->simulations & DWRITE_FONT_SIMULATIONS_BOLD)
+                weight = DWRITE_FONT_WEIGHT_BOLD;
+            if (entry->simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE)
+                style = DWRITE_FONT_STYLE_OBLIQUE;
+
+            if (property == DWRITE_FONT_PROPERTY_ID_WEIGHT)
+                ivalue = weight;
+            else if (property == DWRITE_FONT_PROPERTY_ID_STRETCH)
+                ivalue = font_data->stretch;
+            else
+                ivalue = style;
+
+            if (FAILED(hr = create_localizedstrings(&value)))
+                value = NULL;
+            else
+            {
+                wsprintfW(numW, L"%u", ivalue);
+                if (FAILED(hr = add_localizedstring(value, L"", numW)))
+                {
+                    IDWriteLocalizedStrings_Release(value);
+                    value = NULL;
+                }
+            }
+        }
+
+        if (font_data)
+            release_font_data(font_data);
+    }
     else
         WARN("Unsupported property %u.\n", property);
 
@@ -7530,6 +7578,48 @@ static IDWriteLocalizedStrings * fontset_entry_get_property(struct dwrite_fontse
         entry->props[property] = MISSING_SET_PROP;
 
     return value;
+}
+
+static BOOL fontset_entry_get_axis_values(struct dwrite_fontset_entry *entry, DWRITE_FONT_AXIS_VALUE axis_values[4])
+{
+    static const float width_axis_values[] =
+    {
+        0.0f, /* DWRITE_FONT_STRETCH_UNDEFINED */
+        50.0f, /* DWRITE_FONT_STRETCH_ULTRA_CONDENSED */
+        62.5f, /* DWRITE_FONT_STRETCH_EXTRA_CONDENSED */
+        75.0f, /* DWRITE_FONT_STRETCH_CONDENSED */
+        87.5f, /* DWRITE_FONT_STRETCH_SEMI_CONDENSED */
+        100.0f, /* DWRITE_FONT_STRETCH_NORMAL */
+        112.5f, /* DWRITE_FONT_STRETCH_SEMI_EXPANDED */
+        125.0f, /* DWRITE_FONT_STRETCH_EXPANDED */
+        150.0f, /* DWRITE_FONT_STRETCH_EXTRA_EXPANDED */
+        200.0f, /* DWRITE_FONT_STRETCH_ULTRA_EXPANDED */
+    };
+    struct file_stream_desc stream_desc = { 0 };
+    struct dwrite_font_props props;
+    HRESULT hr;
+
+    if (FAILED(hr = get_filestream_from_file(entry->file, &stream_desc.stream)))
+        return FALSE;
+
+    stream_desc.face_type = entry->face_type;
+    stream_desc.face_index = entry->face_index;
+
+    opentype_get_font_properties(&stream_desc, &props);
+
+    if (stream_desc.stream)
+        IDWriteFontFileStream_Release(stream_desc.stream);
+
+    axis_values[0].axisTag = DWRITE_FONT_AXIS_TAG_WEIGHT;
+    axis_values[0].value = props.weight;
+    axis_values[1].axisTag = DWRITE_FONT_AXIS_TAG_WIDTH;
+    axis_values[1].value = props.stretch < ARRAY_SIZE(width_axis_values) ? width_axis_values[props.stretch] : 0.0f;
+    axis_values[2].axisTag = DWRITE_FONT_AXIS_TAG_ITALIC;
+    axis_values[2].value = props.style == DWRITE_FONT_STYLE_ITALIC ? 1.0f : 0.0f;
+    axis_values[3].axisTag = DWRITE_FONT_AXIS_TAG_SLANT;
+    axis_values[3].value = props.slant_angle;
+
+    return TRUE;
 }
 
 static void init_fontset(struct dwrite_fontset *object, IDWriteFactory7 *factory,
@@ -7572,6 +7662,7 @@ static HRESULT WINAPI dwritefontset_GetFontFaceReference(IDWriteFontSet3 *iface,
         IDWriteFontFaceReference **reference)
 {
     struct dwrite_fontset *set = impl_from_IDWriteFontSet3(iface);
+    DWRITE_FONT_AXIS_VALUE axis_values[4];
 
     TRACE("%p, %u, %p.\n", iface, index, reference);
 
@@ -7580,8 +7671,15 @@ static HRESULT WINAPI dwritefontset_GetFontFaceReference(IDWriteFontSet3 *iface,
     if (index >= set->count)
         return E_INVALIDARG;
 
-    return IDWriteFactory7_CreateFontFaceReference_(set->factory, set->entries[index]->file,
-            set->entries[index]->face_index, set->entries[index]->simulations, reference);
+    if (fontset_entry_get_axis_values(set->entries[index], axis_values))
+    {
+        return create_fontfacereference(set->factory, set->entries[index]->file, set->entries[index]->face_index,
+                set->entries[index]->simulations, axis_values, ARRAY_SIZE(axis_values),
+                (IDWriteFontFaceReference1 **)reference);
+    }
+
+    return create_fontfacereference(set->factory, set->entries[index]->file, set->entries[index]->face_index,
+            set->entries[index]->simulations, NULL, 0, (IDWriteFontFaceReference1 **)reference);
 }
 
 static HRESULT WINAPI dwritefontset_FindFontFaceReference(IDWriteFontSet3 *iface,
