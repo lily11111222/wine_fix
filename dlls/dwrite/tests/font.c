@@ -8016,7 +8016,7 @@ static void test_TranslateColorGlyphRun(void)
             ok(!!colorrun1->glyphRun.glyphIndices, "Unexpected indices %p.\n", colorrun1->glyphRun.glyphIndices);
             ok(!!colorrun1->glyphRun.glyphAdvances, "Unexpected advances %p.\n", colorrun1->glyphRun.glyphAdvances);
             ok(!colorrun1->glyphRunDescription, "Unexpected description pointer.\n");
-            todo_wine
+            /*todo_wine*/
             ok(colorrun1->glyphImageFormat == (DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE | DWRITE_GLYPH_IMAGE_FORMATS_COLR) ||
                     colorrun1->glyphImageFormat == DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE, "Unexpected glyph image format %#x.\n",
                     colorrun1->glyphImageFormat);
@@ -8183,9 +8183,9 @@ static void test_CreateFontFaceReference(void)
     hr = IDWriteFontFaceReference_GetFontFile(ref, &file);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     IDWriteFontFile_Release(file);
-
+    
     hr = IDWriteFontFaceReference_CreateFontFace(ref, &fontface);
-    todo_wine
+    /*todo_wine*/
     ok(hr == DWRITE_E_FILEFORMAT, "Unexpected hr %#lx.\n", hr);
 
     IDWriteFontFaceReference_Release(ref);

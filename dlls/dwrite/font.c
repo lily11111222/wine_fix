@@ -6578,7 +6578,9 @@ HRESULT create_colorglyphenum(D2D1_POINT_2F origin, const DWRITE_GLYPH_RUN *run,
     colorglyphenum->colorrun.glyphRun.glyphOffsets = colorglyphenum->color_offsets;
     colorglyphenum->colorrun.glyphRunDescription = NULL; /* FIXME */
     colorglyphenum->colorrun.measuringMode = measuring_mode;
-    colorglyphenum->colorrun.glyphImageFormat = DWRITE_GLYPH_IMAGE_FORMATS_NONE; /* FIXME */
+    colorglyphenum->colorrun.glyphImageFormat = fontface->glyph_image_formats & formats;
+    if (!colorglyphenum->colorrun.glyphImageFormat)
+        colorglyphenum->colorrun.glyphImageFormat = DWRITE_GLYPH_IMAGE_FORMATS_NONE;
 
     if (run->glyphAdvances)
         memcpy(colorglyphenum->advances, run->glyphAdvances, run->glyphCount * sizeof(FLOAT));
@@ -6668,6 +6670,9 @@ static HRESULT WINAPI fontfacereference_CreateFontFaceWithSimulations(IDWriteFon
     hr = IDWriteFontFile_Analyze(reference->file, &is_supported, &file_type, &face_type, &face_num);
     if (FAILED(hr))
         return hr;
+
+    if (reference->index && face_type != DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION)
+        return DWRITE_E_FILEFORMAT;
 
     hr = IDWriteFactory7_CreateFontFace(reference->factory, face_type, 1, &reference->file, reference->index,
             simulations, &fontface);
