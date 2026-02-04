@@ -10551,7 +10551,7 @@ static void test_CreateFontCollectionFromFontSet(void)
     props[0].propertyValue = L"Another Font";
     props[0].localeName = L"en-US";
     hr = IDWriteFontSetBuilder1_AddFontFaceReference_(builder, ref, props, 1);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
     IDWriteFontFaceReference_Release(ref);
 
@@ -10562,14 +10562,14 @@ static void test_CreateFontCollectionFromFontSet(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
 
     count = IDWriteFontCollection1_GetFontFamilyCount(collection);
-    todo_wine
+    /* todo_wine */
     ok(count == 2, "Unexpected family count %u.\n", count);
 
     /* Explicit fontset properties are prioritized and not replaced by actual properties from a file. */
     exists = FALSE;
     hr = IDWriteFontCollection1_FindFamilyName(collection, L"Another Font", &index, &exists);
     ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
-    todo_wine
+    /* todo_wine */
     ok(!!exists, "Unexpected return value %d.\n", exists);
 
     IDWriteFontCollection1_Release(collection);
