@@ -8307,13 +8307,13 @@ static void test_CreateFontFaceReference(void)
                     (void **)&ref2)))
             {
                 axis_count = IDWriteFontFaceReference1_GetFontAxisValueCount(ref2);
-                todo_wine
+                /*todo_wine*/
                 ok(axis_count >= 4, "Unexpected axis value count.\n");
 
                 hr = IDWriteFontFaceReference1_GetFontAxisValues(ref2, axis_values, ARRAY_SIZE(axis_values));
                 ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-                todo_wine
+                /*todo_wine*/
                 ok(has_main_axis_values(axis_values, axis_count), "Unexpected axis returned.\n");
 
                 IDWriteFontFaceReference1_Release(ref2);

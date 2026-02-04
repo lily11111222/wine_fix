@@ -297,8 +297,8 @@ struct dwrite_font_data
     UINT32 flags; /* enum font_flags */
     struct dwrite_font_propvec propvec;
     struct dwrite_cmap cmap;
-    /* Static axis for weight/width/italic. */
-    DWRITE_FONT_AXIS_VALUE axis[3];
+    /* Static axis for weight/width/italic/slant. */
+    DWRITE_FONT_AXIS_VALUE axis[4];
 
     DWRITE_FONT_METRICS1 metrics;
     IDWriteLocalizedStrings *info_strings[DWRITE_INFORMATIONAL_STRING_SUPPORTED_SCRIPT_LANGUAGE_TAG + 1];
@@ -4412,6 +4412,8 @@ static HRESULT init_font_data(const struct fontface_desc *desc, DWRITE_FONT_FAMI
     data->axis[1].value = width_axis_values[props.stretch];
     data->axis[2].axisTag = DWRITE_FONT_AXIS_TAG_ITALIC;
     data->axis[2].value = data->style == DWRITE_FONT_STYLE_ITALIC ? 1.0f : 0.0f;
+    data->axis[3].axisTag = DWRITE_FONT_AXIS_TAG_SLANT;
+    data->axis[3].value = props.slant_angle;
 
     *ret = data;
     return S_OK;
