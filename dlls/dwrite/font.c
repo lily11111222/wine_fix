@@ -1443,7 +1443,9 @@ static BOOL WINAPI dwritefontface1_IsMonospacedFont(IDWriteFontFace5 *iface)
 static int fontface_get_design_advance(struct dwrite_fontface *fontface, DWRITE_MEASURING_MODE measuring_mode,
         float emsize, float ppdip, const DWRITE_MATRIX *transform, UINT16 glyph, BOOL is_sideways)
 {
+    struct get_design_glyph_metrics_params params;
     unsigned int adjustment = fontface_get_horz_metric_adjustment(fontface);
+    DWRITE_GLYPH_METRICS metrics;
     BOOL has_contours;
     int advance;
 
@@ -1451,7 +1453,20 @@ static int fontface_get_design_advance(struct dwrite_fontface *fontface, DWRITE_
     {
         /* DirectWrite uses vertical advances for sideways glyphs. If vertical
          * metrics are unavailable, it falls back to designUnitsPerEm. */
-        return fontface->metrics.designUnitsPerEm;
+        if (get_cached_glyph_metrics(fontface, glyph, &metrics) != S_OK)
+        {
+            params.object = fontface->get_font_object(fontface);
+            params.simulations = fontface->simulations;
+            params.upem = fontface->metrics.designUnitsPerEm;
+            params.ascent = fontface->typo_metrics.ascent;
+            params.metrics = &metrics;
+            params.glyph = glyph;
+            UNIX_CALL(get_design_glyph_metrics, &params);
+            if (FAILED(set_cached_glyph_metrics(fontface, glyph, &metrics)))
+                return fontface->metrics.designUnitsPerEm;
+        }
+
+        return metrics.advanceHeight ? metrics.advanceHeight : fontface->metrics.designUnitsPerEm;
     }
 
     switch (measuring_mode)

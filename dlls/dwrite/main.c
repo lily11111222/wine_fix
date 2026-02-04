@@ -1855,18 +1855,50 @@ static HRESULT WINAPI dwritefactory4_TranslateColorGlyphRun(IDWriteFactory7 *ifa
     return create_colorglyphenum(origin, run, run_desc, desired_formats, measuring_mode, transform, palette, layers);
 }
 
+static float get_scaled_metric(float em_size, float metric, unsigned int upem)
+{
+    return em_size * metric / upem;
+}
+
 HRESULT compute_glyph_origins(DWRITE_GLYPH_RUN const *run, DWRITE_MEASURING_MODE measuring_mode,
     D2D1_POINT_2F baseline_origin, DWRITE_MATRIX const *transform, D2D1_POINT_2F *origins)
 {
     struct dwrite_fontface *font_obj;
+    DWRITE_GLYPH_METRICS *glyph_metrics = NULL;
+    float sideways_origin_y = 0.0f;
+    HRESULT hr = S_OK;
     unsigned int i;
     float advance;
 
     font_obj = unsafe_impl_from_IDWriteFontFace(run->fontFace);
 
+    if (run->isSideways)
+    {
+        glyph_metrics = calloc(run->glyphCount, sizeof(*glyph_metrics));
+        if (!glyph_metrics)
+            return E_OUTOFMEMORY;
+
+        hr = IDWriteFontFace_GetDesignGlyphMetrics(run->fontFace, run->glyphIndices, run->glyphCount,
+                glyph_metrics, TRUE);
+        if (FAILED(hr))
+        {
+            free(glyph_metrics);
+            return hr;
+        }
+
+        sideways_origin_y = font_obj->metrics.designUnitsPerEm / (4.0f * run->fontEmSize);
+    }
+
     for (i = 0; i < run->glyphCount; ++i)
     {
         origins[i] = baseline_origin;
+
+        if (run->isSideways)
+        {
+            origins[i].x += get_scaled_metric(run->fontEmSize, glyph_metrics[i].verticalOriginY,
+                    font_obj->metrics.designUnitsPerEm);
+            origins[i].y += sideways_origin_y;
+        }
 
         if (run->bidiLevel & 1)
         {
@@ -1897,6 +1929,8 @@ HRESULT compute_glyph_origins(DWRITE_GLYPH_RUN const *run, DWRITE_MEASURING_MODE
 
         }
     }
+
+    free(glyph_metrics);
 
     return S_OK;
 }
