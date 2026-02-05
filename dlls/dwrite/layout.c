@@ -2181,11 +2181,17 @@ static HRESULT layout_compute_effective_runs(struct dwrite_textlayout *layout)
                 i = last_breaking_point;
                 last_breaking_point = ~0u;
             }
-            else {
-                /* Otherwise proceed forward to next newline or breaking point */
+            else if (layout->format.trimmingsign &&
+                    layout->format.trimming.granularity != DWRITE_TRIMMING_GRANULARITY_NONE) {
+                /* Let trimming handle the overflow when configured. */
                 for (; i < layout->cluster_count; i++)
                     if (layout_can_wrap_after(layout, i) || layout->clustermetrics[i].isNewline)
                         break;
+            }
+            else {
+                /* No breaking points, force a character-level break. */
+                if (width > 0.0f)
+                    i--;
             }
         }
         i = min(i, layout->cluster_count - 1);
