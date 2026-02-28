@@ -766,7 +766,7 @@ static void ok_sequence_(struct drawcall_sequence **seq, int sequence_index,
             int cmp = lstrcmpW(expected->string, actual->string);
             if (cmp != 0 && todo) {
                 failcount++;
-            todo_wine
+            /* todo_wine */
                 ok_(file, line) (0, "%s: glyphrun string %s was expected, but got %s instead\n",
                     context, wine_dbgstr_w(expected->string), wine_dbgstr_w(actual->string));
             }
@@ -3056,9 +3056,9 @@ if (0) { /* crashes on native */
     count = 0;
     hr = IDWriteTextLayout1_GetClusterMetrics(layout1, clusters, 4, &count);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine ok(count == 3, "Unexpected cluster count %u.\n", count);
+    /* todo_wine */ ok(count == 3, "Unexpected cluster count %u.\n", count);
     ok(clusters[0].length == 1, "got %u\n", clusters[0].length);
-    todo_wine ok(clusters[1].length == 2, "got %u\n", clusters[1].length);
+    /* todo_wine */ ok(clusters[1].length == 2, "got %u\n", clusters[1].length);
     ok(clusters[2].length == 1, "got %u\n", clusters[2].length);
 
     /* pair kerning flag participates in itemization - combining characters
@@ -5892,7 +5892,7 @@ static void test_SetUnderline(void)
     count = 0;
     hr = IDWriteTextLayout_GetClusterMetrics(layout, clusters, ARRAY_SIZE(clusters), &count);
     ok(hr == S_OK, "Failed to get cluster metrics, hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(count == 3, "Unexpected cluster count %u.\n", count);
 
     range.startPosition = 0;
@@ -5903,7 +5903,7 @@ static void test_SetUnderline(void)
     count = 0;
     hr = IDWriteTextLayout_GetClusterMetrics(layout, clusters, ARRAY_SIZE(clusters), &count);
     ok(hr == S_OK, "Failed to get cluster metrics, hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(count == 3, "Unexpected cluster count %u.\n", count);
 
     flush_sequence(sequences, RENDERER_ID);
