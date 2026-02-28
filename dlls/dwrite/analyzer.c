@@ -2475,6 +2475,13 @@ static inline BOOL fallback_is_uvs(const struct text_source_context *context)
     return FALSE;
 }
 
+static inline BOOL fallback_is_combining(const struct text_source_context *context)
+{
+    unsigned int ch = context->ch;
+    /* Combining Diacritical Marks (U+0300-U+036F) - attach to preceding base, don't split font run. */
+    return ch >= 0x0300 && ch <= 0x036f;
+}
+
 static UINT32 fallback_font_get_supported_length(IDWriteFont3 *font, IDWriteTextAnalysisSource *source,
         UINT32 position, UINT32 length)
 {
@@ -2484,10 +2491,10 @@ static UINT32 fallback_font_get_supported_length(IDWriteFont3 *font, IDWriteText
     text_source_context_init(&context, source, position, length);
     while (!text_source_get_next_u32_char(&context))
     {
-        /* Ignore selectors that are not leading. */
+        /* Ignore selectors and combining marks that are not leading - they attach to preceding base. */
         if (!mapped || !fallback_is_uvs(&context))
         {
-            if (!IDWriteFont3_HasCharacter(font, context.ch)) break;
+            if (!fallback_is_combining(&context) && !IDWriteFont3_HasCharacter(font, context.ch)) break;
         }
         mapped += text_source_get_char_length(&context);
     }
