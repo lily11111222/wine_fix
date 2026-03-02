@@ -3866,7 +3866,7 @@ static void test_SetDrawingEffect(void)
     flush_sequence(sequences, RENDERER_ID);
     hr = IDWriteTextLayout_Draw(layout, NULL, &testrenderer, 0.0, 0.0);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    ok_sequence(sequences, RENDERER_ID, draweffect_seq, "effect draw test", TRUE);
+    ok_sequence(sequences, RENDERER_ID, draweffect_seq, "effect draw test", FALSE);
     IDWriteTextLayout_Release(layout);
 
     /* simple string */
@@ -5909,7 +5909,7 @@ static void test_SetUnderline(void)
     flush_sequence(sequences, RENDERER_ID);
     hr = IDWriteTextLayout_Draw(layout, NULL, &testrenderer, 0.0, 0.0);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    ok_sequence(sequences, RENDERER_ID, drawunderline_seq, "draw underline test", TRUE);
+    ok_sequence(sequences, RENDERER_ID, drawunderline_seq, "draw underline test", FALSE);
 
     IDWriteTextLayout_Release(layout);
 

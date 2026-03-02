@@ -6010,8 +6010,14 @@ static unsigned int opentype_is_diacritic(unsigned int codepoint)
     WORD type = 0;
     /* Ignore higher planes for now. */
     if (codepoint > 0xffff) return 0;
-    GetStringTypeW(CT_CTYPE3, &ch, 1, &type);
-    return !!(type & C3_DIACRITIC);
+    if (GetStringTypeW(CT_CTYPE3, &ch, 1, &type) && (type & C3_DIACRITIC))
+        return 1;
+    /* Fallback for combining marks when C3_DIACRITIC isn't reported. */
+    return (codepoint >= 0x0300 && codepoint <= 0x036f) ||
+           (codepoint >= 0x1ab0 && codepoint <= 0x1aff) ||
+           (codepoint >= 0x1dc0 && codepoint <= 0x1dff) ||
+           (codepoint >= 0x20d0 && codepoint <= 0x20ff) ||
+           (codepoint >= 0xfe20 && codepoint <= 0xfe2f);
 }
 
 static void opentype_get_nominal_glyphs(struct scriptshaping_context *context, const struct shaping_features *features)
@@ -6019,6 +6025,9 @@ static void opentype_get_nominal_glyphs(struct scriptshaping_context *context, c
     unsigned int rtlm_mask = shaping_features_get_mask(features, DWRITE_MAKE_OPENTYPE_TAG('r','t','l','m'), NULL);
     const struct shaping_font_ops *font = context->cache->font;
     unsigned int i, g, c, codepoint, cluster_start_idx = 0;
+    unsigned int prev_base_glyph = ~0u;
+    WCHAR prev_base_char = 0;
+    BOOL prev_base_bmp = FALSE;
     UINT16 *clustermap = context->u.subst.clustermap;
     const WCHAR *text = context->text;
     BOOL bmp;
@@ -6052,6 +6061,33 @@ static void opentype_get_nominal_glyphs(struct scriptshaping_context *context, c
         if (*context->u.subst.digits && codepoint >= '0' && codepoint <= '9')
             codepoint = context->u.subst.digits[codepoint - '0'];
 
+        /* Try to compose base + combining mark when a composed glyph exists. */
+        if (prev_base_bmp && opentype_is_diacritic(codepoint))
+        {
+            WCHAR pair[2] = { prev_base_char, (WCHAR)codepoint };
+            WCHAR composed[2] = { 0 };
+            int composed_len = NormalizeString(NormalizationC, pair, 2, composed, ARRAY_SIZE(composed));
+
+            if (composed_len == 1 && composed[0] != prev_base_char &&
+                    font->has_glyph(context->cache->context, composed[0]))
+            {
+                context->glyph_infos[prev_base_glyph].codepoint = composed[0];
+                context->u.buffer.glyphs[prev_base_glyph] = font->get_glyph(context->cache->context, composed[0]);
+                opentype_set_subst_glyph_props(context, prev_base_glyph);
+
+                clustermap[i] = prev_base_glyph;
+                if (bmp)
+                    context->u.buffer.text_props[i].canBreakShapingAfter = 1;
+                else
+                {
+                    clustermap[i + 1] = prev_base_glyph;
+                    context->u.buffer.text_props[i + 1].canBreakShapingAfter = 1;
+                    ++i;
+                }
+                continue;
+            }
+        }
+
         context->glyph_infos[g].codepoint = codepoint;
         context->u.buffer.glyphs[g] = font->get_glyph(context->cache->context, codepoint);
         context->u.buffer.glyph_props[g].justification = SCRIPT_JUSTIFY_CHARACTER;
@@ -6078,6 +6114,9 @@ static void opentype_get_nominal_glyphs(struct scriptshaping_context *context, c
             context->u.buffer.glyph_props[g].isClusterStart = 1;
             context->glyph_infos[g].start_text_idx = i;
             cluster_start_idx = g;
+            prev_base_glyph = g;
+            prev_base_char = (WCHAR)codepoint;
+            prev_base_bmp = bmp;
         }
         if (opentype_is_zero_width(codepoint))
             context->u.buffer.glyph_props[g].isZeroWidthSpace = 1;
