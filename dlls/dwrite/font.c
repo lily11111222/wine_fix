@@ -5653,7 +5653,11 @@
      file = CreateFileW(refkey->name, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
      if (file == INVALID_HANDLE_VALUE) {
-         WARN_(dwrite_file)("Failed to open the file %s, error %ld.\n", debugstr_w(refkey->name), GetLastError());
+         DWORD error = GetLastError();
+
+         WARN_(dwrite_file)("Failed to open the file %s, error %ld.\n", debugstr_w(refkey->name), error);
+         if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND || error == ERROR_INVALID_NAME)
+             return DWRITE_E_FILENOTFOUND;
          return E_FAIL;
      }
  

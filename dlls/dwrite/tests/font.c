@@ -3521,7 +3521,7 @@
      ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
  
      hr = IDWriteFontFileLoader_CreateStreamFromKey(loader, key1, key1_size, &stream);
-     todo_wine
+     /* was_todo */
      ok(hr == DWRITE_E_FILENOTFOUND, "Unexpected hr %#lx.\n",hr);
  
      IDWriteFontFileLoader_Release(loader);
