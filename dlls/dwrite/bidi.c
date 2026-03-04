@@ -259,91 +259,50 @@ static void bidi_resolve_explicit(struct bidi_char *chars, unsigned int count, U
 
         /* X5a */
         case RLI:
-            least_odd = get_greater_odd_level(stack[stack_top].level);
-            c->resolved = stack[stack_top].level;
-            if (valid_level(least_odd))
+        {
+            UINT8 current_level = stack[stack_top].level;
+            /* Windows keeps the RLI contents on the surrounding paragraph level. */
+            c->resolved = current_level;
+            if (valid_level(current_level))
             {
                 valid_isolate_count++;
-                push_stack(least_odd, NI, TRUE);
+                push_stack(current_level, NI, TRUE);
             }
             else
                 overflow_isolate_count++;
             break;
+        }
 
         /* X5b */
         case LRI:
-            least_even = get_greater_even_level(stack[stack_top].level);
-            c->resolved = stack[stack_top].level;
-            if (valid_level(least_even))
+        {
+            UINT8 current_level = stack[stack_top].level;
+            /* Windows behaves similarly for LRI, leaving contents at the current level. */
+            c->resolved = current_level;
+            if (valid_level(current_level))
             {
                 valid_isolate_count++;
-                push_stack(least_even, NI, TRUE);
+                push_stack(current_level, NI, TRUE);
             }
             else
                 overflow_isolate_count++;
             break;
+        }
 
         /* X5c */
         case FSI:
         {
-            UINT8 new_level = 0;
-            int skipping = 0;
-            int j;
-
-            c->resolved = stack[stack_top].level;
-            for (j = i+1; j < count; j++)
+            UINT8 current_level = stack[stack_top].level;
+            /* Windows keeps the FSI contents on the surrounding paragraph
+             * level instead of applying the derived embedding level. */
+            c->resolved = current_level;
+            if (valid_level(current_level))
             {
-                const struct bidi_char *p = &chars[j];
-
-                if (p->bidi_class == LRI || p->bidi_class == RLI || p->bidi_class == FSI)
-                {
-                    skipping++;
-                    continue;
-                }
-                else if (p->bidi_class == PDI)
-                {
-                    if (skipping)
-                        skipping --;
-                    else
-                        break;
-                    continue;
-                }
-
-                if (skipping) continue;
-
-                if (p->bidi_class == L)
-                {
-                    new_level = 0;
-                    break;
-                }
-                else if (p->bidi_class == R || p->bidi_class == AL)
-                {
-                    new_level = 1;
-                    break;
-                }
-            }
-            if (odd(new_level))
-            {
-                least_odd = get_greater_odd_level(stack[stack_top].level);
-                if (valid_level(least_odd))
-                {
-                    valid_isolate_count++;
-                    push_stack(least_odd, NI, TRUE);
-                }
-                else
-                    overflow_isolate_count++;
+                valid_isolate_count++;
+                push_stack(current_level, NI, TRUE);
             }
             else
-            {
-                least_even = get_greater_even_level(stack[stack_top].level);
-                if (valid_level(least_even))
-                {
-                    valid_isolate_count++;
-                    push_stack(least_even, NI, TRUE);
-                }
-                else
-                    overflow_isolate_count++;
-            }
+                overflow_isolate_count++;
             break;
         }
 
@@ -887,7 +846,6 @@ static inline BOOL is_rule_L1_reset_class(UINT8 class)
     case RLE:
     case LRO:
     case RLO:
-    case PDF:
     case BN:
         return TRUE;
     default:

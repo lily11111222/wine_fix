@@ -1995,7 +1995,7 @@ static void test_CreateFontFace(void)
     ok(hr == DWRITE_E_FILEFORMAT || broken(hr == E_FAIL) /* < win10 */, "Unexpected hr %#lx.\n", hr);
 
     hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_RAW_CFF, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
-    todo_wine
+    /* was_todo */
     ok(hr == DWRITE_E_UNSUPPORTEDOPERATION || broken(hr == E_INVALIDARG) /* older versions */, "Unexpected hr %#lx.\n", hr);
 
     fontface = (void*)0xdeadbeef;
@@ -2015,7 +2015,7 @@ static void test_CreateFontFace(void)
 
     fontface = NULL;
     hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_UNKNOWN, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
-    todo_wine
+    /* was_todo */
     ok(hr == S_OK || broken(hr == E_INVALIDARG) /* < win10 */, "Unexpected hr %#lx.\n", hr);
     if (hr == S_OK) {
         ok(fontface != NULL, "got %p\n", fontface);
@@ -2608,7 +2608,7 @@ static void test_system_fontcollection(void)
         hr = IDWriteFontCollection1_GetFontSet(collection1, &fontset);
         ok(hr == S_OK, "Failed to get fontset, hr %#lx.\n", hr);
         EXPECT_REF(collection1, 2);
-        todo_wine
+        /* was_todo */
         EXPECT_REF(factory, 2);
         EXPECT_REF(fontset, 1);
 
