@@ -8314,7 +8314,6 @@
                  hr = IDWriteFontFaceReference1_GetFontAxisValues(ref2, axis_values, ARRAY_SIZE(axis_values));
                  ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
  
-                 todo_wine
                  ok(has_main_axis_values(axis_values, axis_count), "Unexpected axis returned.\n");
  
                  IDWriteFontFaceReference1_Release(ref2);
