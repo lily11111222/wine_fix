@@ -608,7 +608,6 @@
          FILETIME timestamp;
          struct dwrite_fontset_entry **entries;
          unsigned int count;
-         IDWriteFontSet *fontset;
      } system_set;
  
      IDWriteFontFileLoader *localfontfileloader;
@@ -648,8 +647,6 @@
  {
      unsigned int i;
  
-     if (factory->system_set.fontset)
-         IDWriteFontSet_Release(factory->system_set.fontset);
      for (i = 0; i < factory->system_set.count; ++i)
          release_fontset_entry(factory->system_set.entries[i]);
      memset(&factory->system_set, 0, sizeof(factory->system_set));
@@ -1708,7 +1705,7 @@
  HRESULT create_system_fontset(IDWriteFactory7 *factory_iface, REFIID riid, void **obj)
  {
      struct dwritefactory *factory = impl_from_IDWriteFactory7(factory_iface);
-     IDWriteFontSet *fontset = NULL;
+     IDWriteFontSet *fontset;
      FILETIME timestamp;
      HRESULT hr = S_OK;
  
@@ -1723,23 +1720,13 @@
  
      if (SUCCEEDED(hr))
      {
-         if (!factory->system_set.fontset)
-             hr = fontset_create_from_set(factory_iface, factory->system_set.entries,
-                     factory->system_set.count, TRUE, &factory->system_set.fontset);
- 
-         if (SUCCEEDED(hr))
-         {
-             fontset = factory->system_set.fontset;
-             if (fontset)
-                 IDWriteFontSet_AddRef(fontset);
-             else
-                 hr = E_UNEXPECTED;
-         }
+         hr = fontset_create_from_set(factory_iface, factory->system_set.entries,
+                 factory->system_set.count, TRUE, &fontset);
      }
  
      LeaveCriticalSection(&factory->cs);
  
-     if (SUCCEEDED(hr) && fontset)
+     if (SUCCEEDED(hr))
      {
          hr = IDWriteFontSet_QueryInterface(fontset, riid, obj);
          IDWriteFontSet_Release(fontset);
