@@ -8308,7 +8308,7 @@
                      (void **)&ref2)))
              {
                  axis_count = IDWriteFontFaceReference1_GetFontAxisValueCount(ref2);
-                 todo_wine
+                 /* was_todo */
                  ok(axis_count >= 4, "Unexpected axis value count.\n");
  
                  hr = IDWriteFontFaceReference1_GetFontAxisValues(ref2, axis_values, ARRAY_SIZE(axis_values));
