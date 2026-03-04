@@ -8871,7 +8871,7 @@
          ok(hr == S_OK, "%u: failed to compute glyph origins, hr %#lx.\n", i, hr);
          for (j = 0; j < run.glyphCount; ++j)
          {
-             todo_wine_if(run.isSideways)
+             /* was_todo */_if(run.isSideways)
              ok(!memcmp(&origins[j], &expected_origins[j], sizeof(origins[j])),
                      "%u: unexpected origin[%u] (%f, %f) - (%f, %f).\n", i, j, origins[j].x, origins[j].y,
                      expected_origins[j].x, expected_origins[j].y);
