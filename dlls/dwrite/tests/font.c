@@ -9848,7 +9848,7 @@
          ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
  
          count = IDWriteFontFaceReference1_GetFontAxisValueCount(ref1);
-         todo_wine
+         /* was_todo */
          ok(count == 4, "Unexpected axis count %u.\n", count);
  
      if (count == 4)

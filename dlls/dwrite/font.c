@@ -4383,23 +4383,32 @@
      return TRUE;
  }
  
+static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
+{
+    static const float width_axis_values[] =
+    {
+        0.0f, /* DWRITE_FONT_STRETCH_UNDEFINED */
+        50.0f, /* DWRITE_FONT_STRETCH_ULTRA_CONDENSED */
+        62.5f, /* DWRITE_FONT_STRETCH_EXTRA_CONDENSED */
+        75.0f, /* DWRITE_FONT_STRETCH_CONDENSED */
+        87.5f, /* DWRITE_FONT_STRETCH_SEMI_CONDENSED */
+        100.0f, /* DWRITE_FONT_STRETCH_NORMAL */
+        112.5f, /* DWRITE_FONT_STRETCH_SEMI_EXPANDED */
+        125.0f, /* DWRITE_FONT_STRETCH_EXPANDED */
+        150.0f, /* DWRITE_FONT_STRETCH_EXTRA_EXPANDED */
+        200.0f, /* DWRITE_FONT_STRETCH_ULTRA_EXPANDED */
+    };
+
+    if ((unsigned int)stretch < ARRAY_SIZE(width_axis_values))
+        return width_axis_values[stretch];
+
+    return 0.0f;
+}
+
+
  static HRESULT init_font_data(const struct fontface_desc *desc, DWRITE_FONT_FAMILY_MODEL family_model,
          struct dwrite_font_data **ret)
  {
-     static const float width_axis_values[] =
-     {
-         0.0f, /* DWRITE_FONT_STRETCH_UNDEFINED */
-         50.0f, /* DWRITE_FONT_STRETCH_ULTRA_CONDENSED */
-         62.5f, /* DWRITE_FONT_STRETCH_EXTRA_CONDENSED */
-         75.0f, /* DWRITE_FONT_STRETCH_CONDENSED */
-         87.5f, /* DWRITE_FONT_STRETCH_SEMI_CONDENSED */
-         100.0f, /* DWRITE_FONT_STRETCH_NORMAL */
-         112.5f, /* DWRITE_FONT_STRETCH_SEMI_EXPANDED */
-         125.0f, /* DWRITE_FONT_STRETCH_EXPANDED */
-         150.0f, /* DWRITE_FONT_STRETCH_EXTRA_EXPANDED */
-         200.0f, /* DWRITE_FONT_STRETCH_ULTRA_EXPANDED */
-     };
- 
      struct file_stream_desc stream_desc;
      struct dwrite_font_props props;
      struct dwrite_font_data *data;
@@ -4454,7 +4463,7 @@
      data->axis[0].axisTag = DWRITE_FONT_AXIS_TAG_WEIGHT;
      data->axis[0].value = props.weight;
      data->axis[1].axisTag = DWRITE_FONT_AXIS_TAG_WIDTH;
-     data->axis[1].value = width_axis_values[props.stretch];
+     data->axis[1].value = get_width_axis_value(props.stretch);
      data->axis[2].axisTag = DWRITE_FONT_AXIS_TAG_ITALIC;
      data->axis[2].value = data->style == DWRITE_FONT_STYLE_ITALIC ? 1.0f : 0.0f;
      data->axis[3].axisTag = DWRITE_FONT_AXIS_TAG_SLANT;
