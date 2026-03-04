@@ -10360,7 +10360,7 @@
      IDWriteFontCollection3_Release(collection3);
  
      event = get_collection_expiration_event(collection);
-     ok(!!event, "Unexpected event handle.\n");
+     ok(event != NULL, "Expected expiration event handle, got %p.\n", event);
  
      /* Compare handles with another isolated factory. */
      factory2 = create_factory();
@@ -10368,8 +10368,8 @@
      hr = IDWriteFactory_GetSystemFontCollection(factory2, &collection2, FALSE);
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
      event2 = get_collection_expiration_event(collection2);
-     ok(!!event2, "Unexpected event handle.\n");
-     ok(event != event2, "Unexpected event handle.\n");
+     ok(event2 != NULL, "Expected expiration event handle, got %p.\n", event2);
+     ok(event != event2, "Expected different expiration events for distinct factories, got %p and %p.\n", event, event2);
      IDWriteFontCollection_Release(collection2);
  
      IDWriteFontCollection_Release(collection);
