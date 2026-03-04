@@ -971,7 +971,7 @@
          struct fileloader *fileloader = factory_get_file_loader(factory, loader);
          IDWriteFontFileLoader_Release(loader);
          if (!fileloader)
-             return E_INVALIDARG;
+             return S_FALSE;
          fontfaces = &fileloader->fontfaces;
      }
  
@@ -1022,6 +1022,9 @@
  {
      struct dwritefactory *factory = impl_from_IDWriteFactory7(iface);
      struct fontfacecached *cached;
+ 
+     if (!fontfaces)
+         return NULL;
  
      /* new cache entry */
      if (!(cached = malloc(sizeof(*cached))))
