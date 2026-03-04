@@ -8125,6 +8125,57 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
  
      return S_OK;
  }
+static HRESULT fontset_entry_apply_properties(struct dwrite_fontset_entry *entry,
+        DWRITE_FONT_PROPERTY const *props, UINT32 prop_count)
+{
+    UINT32 i;
+    HRESULT hr;
+
+    for (i = 0; i < prop_count; ++i)
+    {
+        IDWriteLocalizedStrings *strings;
+        const WCHAR *locale;
+        const WCHAR *value;
+
+        if (!(props[i].propertyId > DWRITE_FONT_PROPERTY_ID_NONE &&
+                props[i].propertyId <= DWRITE_FONT_PROPERTY_ID_TYPOGRAPHIC_FACE_NAME))
+        {
+            FIXME("Unsupported property %u.\n", props[i].propertyId);
+            continue;
+        }
+
+        if (!props[i].propertyValue)
+        {
+            if (entry->props[props[i].propertyId] && entry->props[props[i].propertyId] != MISSING_SET_PROP)
+                IDWriteLocalizedStrings_Release(entry->props[props[i].propertyId]);
+            entry->props[props[i].propertyId] = MISSING_SET_PROP;
+            continue;
+        }
+
+        locale = props[i].localeName ? props[i].localeName : L"";
+        value = props[i].propertyValue;
+
+        hr = create_localizedstrings(&strings);
+        if (FAILED(hr))
+            return hr;
+
+        hr = add_localizedstring(strings, locale, value);
+        if (FAILED(hr))
+        {
+            IDWriteLocalizedStrings_Release(strings);
+            return hr;
+        }
+
+        if (entry->props[props[i].propertyId] && entry->props[props[i].propertyId] != MISSING_SET_PROP)
+            IDWriteLocalizedStrings_Release(entry->props[props[i].propertyId]);
+
+        entry->props[props[i].propertyId] = strings;
+    }
+
+    return S_OK;
+}
+
+
  
  static HRESULT fontset_builder_add_file(struct dwrite_fontset_builder *builder, IDWriteFontFile *file)
  {
@@ -8154,9 +8205,65 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
  static HRESULT WINAPI dwritefontsetbuilder_AddFontFaceReference_(IDWriteFontSetBuilder2 *iface,
          IDWriteFontFaceReference *ref, DWRITE_FONT_PROPERTY const *props, UINT32 prop_count)
  {
-     FIXME("%p, %p, %p, %u.\n", iface, ref, props, prop_count);
+     struct dwrite_fontset_builder *builder = impl_from_IDWriteFontSetBuilder2(iface);
+     struct dwrite_fontset_entry_desc desc = { 0 };
+     struct dwrite_fontset_entry *entry = NULL;
+     DWRITE_FONT_FILE_TYPE file_type;
+     BOOL supported = FALSE;
+     HRESULT hr;
+     UINT32 face_count;
  
-     return E_NOTIMPL;
+     TRACE("%p, %p, %p, %u.\n", iface, ref, props, prop_count);
+ 
+     if (!ref)
+         return E_INVALIDARG;
+     if (prop_count && !props)
+         return E_INVALIDARG;
+ 
+     hr = IDWriteFontFaceReference_GetFontFile(ref, &desc.file);
+     if (FAILED(hr))
+         return hr;
+ 
+     hr = IDWriteFontFile_Analyze(desc.file, &supported, &file_type, &desc.face_type, &face_count);
+     if (SUCCEEDED(hr))
+     {
+         if (!supported)
+             hr = DWRITE_E_FILEFORMAT;
+         else
+         {
+             desc.face_index = IDWriteFontFaceReference_GetFontFaceIndex(ref);
+             desc.simulations = IDWriteFontFaceReference_GetSimulations(ref);
+ 
+             if (!dwrite_array_reserve((void **)&builder->entries, &builder->capacity,
+                     builder->count + 1, sizeof(*builder->entries)))
+             {
+                 hr = E_OUTOFMEMORY;
+             }
+             else
+             {
+                 hr = fontset_create_entry(desc.file, desc.face_type, desc.face_index,
+                         desc.simulations, &entry);
+                 if (SUCCEEDED(hr))
+                 {
+                     if (prop_count)
+                         hr = fontset_entry_apply_properties(entry, props, prop_count);
+ 
+                     if (SUCCEEDED(hr))
+                     {
+                         builder->entries[builder->count++] = entry;
+                         entry = NULL;
+                     }
+                 }
+             }
+         }
+     }
+ 
+     IDWriteFontFile_Release(desc.file);
+ 
+     if (entry)
+         release_fontset_entry(entry);
+ 
+     return hr;
  }
  
  static HRESULT WINAPI dwritefontsetbuilder_AddFontFaceReference(IDWriteFontSetBuilder2 *iface,

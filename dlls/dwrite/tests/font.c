@@ -10566,7 +10566,7 @@
      exists = FALSE;
      hr = IDWriteFontCollection1_FindFamilyName(collection, L"Another Font", &index, &exists);
      ok(hr == S_OK, "Unexpected hr %#lx.\n",hr);
-     todo_wine
+     /* was_todo */
      ok(!!exists, "Unexpected return value %d.\n", exists);
  
      IDWriteFontCollection1_Release(collection);
