@@ -2651,7 +2651,7 @@
          HANDLE event;
  
          event = IDWriteFontCollection3_GetExpirationEvent(collection3);
-         todo_wine
+         /* was_todo */
          ok(!!event, "Expected event handle.\n");
  
          check_familymodel(collection3, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE);

@@ -346,7 +346,8 @@
      struct dwrite_fontfamily_data **family_data;
      size_t size;
      size_t count;
- 
+     HANDLE expiration_event;
+
      struct
      {
          struct dwrite_fontset_entry **entries;
@@ -3279,6 +3280,9 @@
              release_fontfamily_data(collection->family_data[i]);
          for (i = 0; i < collection->set.count; ++i)
              release_fontset_entry(collection->set.entries[i]);
+         if (collection->expiration_event)
+             CloseHandle(collection->expiration_event);
+
          free(collection->family_data);
          free(collection);
      }
@@ -3524,9 +3528,32 @@
  
  static HANDLE WINAPI dwritefontcollection3_GetExpirationEvent(IDWriteFontCollection3 *iface)
  {
-     FIXME("%p.\n", iface);
+     struct dwrite_fontcollection *collection = impl_from_IDWriteFontCollection3(iface);
+     HANDLE event, created, existing;
  
-     return NULL;
+     TRACE("%p.\n", iface);
+ 
+     event = collection->expiration_event;
+     if (!event)
+     {
+         created = CreateEventW(NULL, TRUE, FALSE, NULL);
+         if (!created)
+         {
+             WARN("Failed to create expiration event, error %lu.\n", GetLastError());
+             return NULL;
+         }
+ 
+         existing = InterlockedCompareExchangePointer((void **)&collection->expiration_event, created, NULL);
+         if (existing)
+         {
+             CloseHandle(created);
+             event = existing;
+         }
+         else
+             event = created;
+     }
+ 
+     return event;
  }
  
  static const IDWriteFontCollection3Vtbl fontcollectionvtbl =
@@ -3586,6 +3613,10 @@
      collection->factory = factory;
      IDWriteFactory7_AddRef(collection->factory);
      collection->family_model = family_model;
+     collection->expiration_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+     if (!collection->expiration_event)
+         WARN("Failed to create expiration event, error %lu.\n", GetLastError());
+
  }
  
  HRESULT get_filestream_from_file(IDWriteFontFile *file, IDWriteFontFileStream **stream)
