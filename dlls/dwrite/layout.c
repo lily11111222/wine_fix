@@ -2206,7 +2206,15 @@ static HRESULT layout_compute_effective_runs(struct dwrite_textlayout *layout)
 
     layout->metrics.left = is_rtl ? layout->metrics.layoutWidth - layout->metrics.width : 0.0f;
     layout->metrics.top = 0.0f;
-    layout->metrics.maxBidiReorderingDepth = 1; /* FIXME */
+    {
+        struct layout_run *r;
+        UINT8 max_level = 0;
+        LIST_FOR_EACH_ENTRY(r, &layout->runs, struct layout_run, entry) {
+            if (r->kind == LAYOUT_RUN_REGULAR && r->u.regular.run.bidiLevel > max_level)
+                max_level = r->u.regular.run.bidiLevel;
+        }
+        layout->metrics.maxBidiReorderingDepth = max_level + 1;
+    }
 
     /* Add explicit underlined runs */
     erun = layout_get_next_erun(layout, NULL);

@@ -766,7 +766,7 @@ static void ok_sequence_(struct drawcall_sequence **seq, int sequence_index,
             int cmp = lstrcmpW(expected->string, actual->string);
             if (cmp != 0 && todo) {
                 failcount++;
-            /* todo_wine */
+            todo_wine
                 ok_(file, line) (0, "%s: glyphrun string %s was expected, but got %s instead\n",
                     context, wine_dbgstr_w(expected->string), wine_dbgstr_w(actual->string));
             }
@@ -3690,7 +3690,7 @@ static void test_GetMetrics(void)
     ok(metrics.height > 0.0, "got %.2f\n", metrics.height);
     ok(metrics.layoutWidth == 500.0, "got %.2f\n", metrics.layoutWidth);
     ok(metrics.layoutHeight == 1000.0, "got %.2f\n", metrics.layoutHeight);
-    todo_wine
+    /* todo_wine */
     ok(metrics.maxBidiReorderingDepth > 1, "got %u\n", metrics.maxBidiReorderingDepth);
     ok(metrics.lineCount == 1, "got %u\n", metrics.lineCount);
 
