@@ -6709,7 +6709,13 @@
      hr = IDWriteFontFile_Analyze(reference->file, &is_supported, &file_type, &face_type, &face_num);
      if (FAILED(hr))
          return hr;
- 
+
+    if (!is_supported)
+        return DWRITE_E_FILEFORMAT;
+
+    if (reference->index >= face_num)
+        return DWRITE_E_FILEFORMAT;
+
      hr = IDWriteFactory7_CreateFontFace(reference->factory, face_type, 1, &reference->file, reference->index,
              simulations, &fontface);
      if (SUCCEEDED(hr))
