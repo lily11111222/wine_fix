@@ -40,6 +40,8 @@
  #define MS_CPAL_TAG DWRITE_MAKE_OPENTYPE_TAG('C','P','A','L')
  #define MS_COLR_TAG DWRITE_MAKE_OPENTYPE_TAG('C','O','L','R')
  
+ #define MISSING_SET_PROP ((void *)0x1)
+
  static const FLOAT RECOMMENDED_OUTLINE_AA_THRESHOLD = 100.0f;
  static const FLOAT RECOMMENDED_OUTLINE_A_THRESHOLD = 350.0f;
  static const FLOAT RECOMMENDED_NATURAL_PPEM = 20.0f;
@@ -3687,6 +3689,33 @@
      IDWriteLocalizedStrings_GetString(strings, index, buffer, size);
  }
  
+
+ static BOOL localizedstrings_get_preferred_string(IDWriteLocalizedStrings *strings, WCHAR *buffer, UINT32 size)
+ {
+    UINT32 index, count;
+    BOOL exists = FALSE;
+    HRESULT hr;
+
+    if (!strings || !buffer || !size)
+        return FALSE;
+
+    buffer[0] = 0;
+
+    hr = IDWriteLocalizedStrings_FindLocaleName(strings, L"en-us", &index, &exists);
+    if (SUCCEEDED(hr) && exists && SUCCEEDED(IDWriteLocalizedStrings_GetString(strings, index, buffer, size)))
+        return TRUE;
+
+    count = IDWriteLocalizedStrings_GetCount(strings);
+    if (!count)
+        return FALSE;
+
+    if (SUCCEEDED(IDWriteLocalizedStrings_GetString(strings, 0, buffer, size)))
+        return TRUE;
+
+    buffer[0] = 0;
+    return FALSE;
+}
+
  static int trim_spaces(WCHAR *in, WCHAR *ret)
  {
      int len;
@@ -4818,8 +4847,10 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
      return hr;
  }
  
- static HRESULT collection_add_font_entry(struct dwrite_fontcollection *collection, const struct fontface_desc *desc)
+ static HRESULT collection_add_font_entry(struct dwrite_fontcollection *collection, const struct fontface_desc *desc,
+         const struct dwrite_fontset_entry *entry)
  {
+     IDWriteLocalizedStrings *override_family = NULL;
      struct dwrite_font_data *font_data;
      WCHAR familyW[255];
      UINT32 index;
@@ -4828,7 +4859,24 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
      if (FAILED(hr = init_font_data(desc, collection->family_model, &font_data)))
          return hr;
  
-     fontstrings_get_en_string(font_data->family_names, familyW, ARRAY_SIZE(familyW));
+     if (entry)
+     {
+         IDWriteLocalizedStrings *prop = entry->props[DWRITE_FONT_PROPERTY_ID_WEIGHT_STRETCH_STYLE_FAMILY_NAME];
+ 
+         if (prop && prop != MISSING_SET_PROP)
+             override_family = prop;
+     }
+ 
+     if (override_family)
+     {
+         IDWriteLocalizedStrings_AddRef(override_family);
+         if (font_data->family_names)
+             IDWriteLocalizedStrings_Release(font_data->family_names);
+         font_data->family_names = override_family;
+     }
+ 
+     if (!localizedstrings_get_preferred_string(font_data->family_names, familyW, ARRAY_SIZE(familyW)))
+         fontstrings_get_en_string(font_data->family_names, familyW, ARRAY_SIZE(familyW));
  
      /* ignore dot named faces */
      if (familyW[0] == '.')
@@ -4909,7 +4957,7 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
          desc.simulations = entry->simulations;
          desc.font_data = NULL;
  
-         if (FAILED(hr = collection_add_font_entry(collection, &desc)))
+         if (FAILED(hr = collection_add_font_entry(collection, &desc, entry)))
              WARN("Failed to add font collection element, hr %#lx.\n", hr);
  
          IDWriteFontFileStream_Release(stream);
@@ -7499,8 +7547,6 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
  
      return refcount;
  }
- 
- #define MISSING_SET_PROP ((void *)0x1)
  
  void release_fontset_entry(struct dwrite_fontset_entry *entry)
  {
