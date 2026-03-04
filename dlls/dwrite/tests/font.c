@@ -1995,7 +1995,7 @@
      ok(hr == DWRITE_E_FILEFORMAT || broken(hr == E_FAIL) /* < win10 */, "Unexpected hr %#lx.\n", hr);
  
      hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_RAW_CFF, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
-     todo_wine
+     /* was_todo */
      ok(hr == DWRITE_E_UNSUPPORTEDOPERATION || broken(hr == E_INVALIDARG) /* older versions */, "Unexpected hr %#lx.\n", hr);
  
      fontface = (void*)0xdeadbeef;
@@ -2015,7 +2015,7 @@
  
      fontface = NULL;
      hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_UNKNOWN, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
-     todo_wine
+     /* was_todo */
      ok(hr == S_OK || broken(hr == E_INVALIDARG) /* < win10 */, "Unexpected hr %#lx.\n", hr);
      if (hr == S_OK) {
          ok(fontface != NULL, "got %p\n", fontface);
@@ -2608,7 +2608,7 @@
          hr = IDWriteFontCollection1_GetFontSet(collection1, &fontset);
          ok(hr == S_OK, "Failed to get fontset, hr %#lx.\n", hr);
          EXPECT_REF(collection1, 2);
-         todo_wine
+         /* was_todo */
          EXPECT_REF(factory, 2);
          EXPECT_REF(fontset, 1);
  
@@ -2621,13 +2621,13 @@
          hr = IDWriteFactory_QueryInterface(factory, &IID_IDWriteFactory3, (void **)&factory3);
          ok(hr == S_OK, "Failed to get IDWriteFactory3 interface, hr %#lx.\n", hr);
  
-         todo_wine
+         /* was_todo */
          EXPECT_REF(factory, 3);
          hr = IDWriteFactory3_GetSystemFontSet(factory3, &fontset2);
          ok(hr == S_OK, "Failed to get system font set, hr %#lx.\n", hr);
          ok(fontset != fontset2, "Expected new fontset instance.\n");
          EXPECT_REF(fontset2, 1);
-         todo_wine
+         /* was_todo */
          EXPECT_REF(factory, 4);
  
          hr = IDWriteFactory3_GetSystemFontSet(factory3, &fontset3);

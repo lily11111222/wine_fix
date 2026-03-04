@@ -498,6 +498,7 @@
      unsigned int count;
  
      BOOL is_system;
+     BOOL weak_factory_ref;
  };
  
  struct dwrite_fontset_builder
@@ -3438,10 +3439,20 @@
  static HRESULT WINAPI dwritefontcollection1_GetFontSet(IDWriteFontCollection3 *iface, IDWriteFontSet **fontset)
  {
      struct dwrite_fontcollection *collection = impl_from_IDWriteFontCollection3(iface);
+     HRESULT hr;
  
      TRACE("%p, %p.\n", iface, fontset);
  
-     return fontset_create_from_font_collection(collection, (IDWriteFontSet1 **)fontset);
+     hr = fontset_create_from_font_collection(collection, (IDWriteFontSet1 **)fontset);
+     if (SUCCEEDED(hr) && fontset && *fontset)
+     {
+         struct dwrite_fontset *set = unsafe_impl_from_IDWriteFontSet(*fontset);
+
+         set->weak_factory_ref = TRUE;
+         if (set->factory)
+             IDWriteFactory7_Release(set->factory);
+     }
+     return hr;
  }
  
  static HRESULT WINAPI dwritefontcollection1_GetFontFamily(IDWriteFontCollection3 *iface, UINT32 index,
@@ -7500,7 +7511,8 @@
  
      if (!refcount)
      {
-         IDWriteFactory7_Release(set->factory);
+         if (!set->weak_factory_ref)
+             IDWriteFactory7_Release(set->factory);
          for (i = 0; i < set->count; ++i)
              release_fontset_entry(set->entries[i]);
          free(set->entries);
@@ -7897,6 +7909,7 @@
      object->entries = entries;
      object->count = count;
      object->is_system = is_system;
+     object->weak_factory_ref = FALSE;
  }
  
  HRESULT fontset_create_from_set(IDWriteFactory7 *factory, struct dwrite_fontset_entry **src_entries,
