@@ -5376,7 +5376,7 @@
          advance = 0;
          hr = IDWriteFontFace1_GetDesignGlyphAdvances(fontface1, 1, &index, &advance, TRUE);
          ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-         todo_wine
+         /* was_todo */
          ok(advance == 2048, "got %i\n", advance);
  
          IDWriteFontFace1_Release(fontface1);

@@ -1483,22 +1483,45 @@
      UINT32 glyph_count, UINT16 const *glyphs, INT32 *advances, BOOL is_sideways)
  {
      struct dwrite_fontface *fontface = impl_from_IDWriteFontFace5(iface);
+     HRESULT hr = S_OK;
      unsigned int i;
  
      TRACE("%p, %u, %p, %p, %d.\n", iface, glyph_count, glyphs, advances, is_sideways);
  
-     if (is_sideways)
-         FIXME("sideways mode not supported\n");
- 
      EnterCriticalSection(&fontface->cs);
      for (i = 0; i < glyph_count; ++i)
      {
-         advances[i] = fontface_get_design_advance(fontface, DWRITE_MEASURING_MODE_NATURAL,
-                 fontface->metrics.designUnitsPerEm, 1.0f, NULL, glyphs[i], is_sideways);
+         if (is_sideways)
+         {
+             DWRITE_GLYPH_METRICS metrics;
+ 
+             if (get_cached_glyph_metrics(fontface, glyphs[i], &metrics) != S_OK)
+             {
+                 struct get_design_glyph_metrics_params params;
+ 
+                 params.object = fontface->get_font_object(fontface);
+                 params.simulations = fontface->simulations;
+                 params.glyph = glyphs[i];
+                 params.upem = fontface->metrics.designUnitsPerEm;
+                 params.ascent = fontface->typo_metrics.ascent;
+                 params.metrics = &metrics;
+ 
+                 UNIX_CALL(get_design_glyph_metrics, &params);
+                 if (FAILED(hr = set_cached_glyph_metrics(fontface, glyphs[i], &metrics)))
+                     break;
+             }
+ 
+             advances[i] = metrics.advanceHeight;
+         }
+         else
+         {
+             advances[i] = fontface_get_design_advance(fontface, DWRITE_MEASURING_MODE_NATURAL,
+                     fontface->metrics.designUnitsPerEm, 1.0f, NULL, glyphs[i], FALSE);
+         }
      }
      LeaveCriticalSection(&fontface->cs);
  
-     return S_OK;
+     return hr;
  }
  
  static HRESULT WINAPI dwritefontface1_GetGdiCompatibleGlyphAdvances(IDWriteFontFace5 *iface,
