@@ -1755,7 +1755,7 @@
      TRACE("%p, %p, %p.\n", iface, fontset, collection);
  
      return create_font_collection_from_set(iface, fontset, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE,
-             &IID_IDWriteFontCollection1, (void **)collection);
+             &IID_IDWriteFontCollection1, (void **)collection, FALSE);
  }
  
  static HRESULT WINAPI dwritefactory3_GetSystemFontCollection(IDWriteFactory7 *iface, BOOL include_downloadable,
@@ -1947,7 +1947,7 @@
  {
      TRACE("%p, %p, %d, %p.\n", iface, fontset, family_model, collection);
  
-     return create_font_collection_from_set(iface, fontset, family_model, &IID_IDWriteFontCollection2, (void **)collection);
+     return create_font_collection_from_set(iface, fontset, family_model, &IID_IDWriteFontCollection2, (void **)collection, FALSE);
  }
  
  static HRESULT WINAPI dwritefactory6_CreateFontSetBuilder(IDWriteFactory7 *iface, IDWriteFontSetBuilder2 **builder)
