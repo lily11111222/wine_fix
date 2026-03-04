@@ -8204,7 +8204,10 @@ static float get_width_axis_value(DWRITE_FONT_STRETCH stretch)
  
      TRACE("%p, %p.\n", iface, fontset);
  
-     return fontset_create_from_set(builder->factory, builder->entries, builder->count, builder->is_system, fontset);
+     if (!fontset)
+        return E_INVALIDARG;
+
+    return fontset_create_from_set(builder->factory, builder->entries, builder->count, builder->is_system, fontset);
  }
  
  static HRESULT WINAPI dwritefontsetbuilder1_AddFontFile(IDWriteFontSetBuilder2 *iface, IDWriteFontFile *file)
