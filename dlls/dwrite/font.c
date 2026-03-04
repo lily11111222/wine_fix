@@ -399,6 +399,7 @@
      LONG refcount;
  
      DWRITE_RENDERING_MODE1 rendering_mode;
+     DWRITE_TEXT_ANTIALIAS_MODE aa_mode;
      DWRITE_TEXTURE_TYPE texture_type; /* derived from rendering mode specified on creation */
      DWRITE_GLYPH_RUN run; /* glyphAdvances and glyphOffsets are not used */
      DWRITE_MATRIX m;
@@ -6183,7 +6184,10 @@
      default:
          ;
      }
- 
+
+     if (analysis->aa_mode == DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE && cleartypelevel)
+         *cleartypelevel = 0.0f;
+
      return S_OK;
  }
  
@@ -6259,7 +6263,8 @@
      analysis->IDWriteGlyphRunAnalysis_iface.lpVtbl = &glyphrunanalysisvtbl;
      analysis->refcount = 1;
      analysis->rendering_mode = desc->rendering_mode;
- 
+     analysis->aa_mode = desc->aa_mode;
+
      if (desc->rendering_mode == DWRITE_RENDERING_MODE1_ALIASED
              || desc->aa_mode == DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE)
          analysis->texture_type = DWRITE_TEXTURE_ALIASED_1x1;
