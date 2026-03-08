@@ -327,7 +327,8 @@ static unsigned char* interface_user_marshal(ULONG *pFlags, unsigned char *Buffe
 {
   TRACE("%#lx, %p, %p.\n", *pFlags, Buffer, punk);
 
-  /* first DWORD is used to store pointer itself, truncated on win64 */
+  /* first DWORD is used to store pointer itself, truncated on win64.
+   * Windows uses pointer+1 (win9x used raw pointer). */
   if(!punk)
   {
       memset(Buffer, 0, sizeof(ULONG));
@@ -335,7 +336,7 @@ static unsigned char* interface_user_marshal(ULONG *pFlags, unsigned char *Buffe
   }
   else
   {
-      *(DWORD*)Buffer = (DWORD_PTR)punk;
+      *(DWORD*)Buffer = (DWORD)(DWORD_PTR)punk + 1;
       Buffer += sizeof(DWORD);
   }
 
