@@ -80,17 +80,29 @@ struct ifstub * stub_manager_new_ifstub(struct stub_manager *m, IRpcStubBuffer *
     stub = calloc(1, sizeof(struct ifstub));
     if (!stub) return NULL;
 
-    hr = IUnknown_QueryInterface(m->object, iid, (void **)&stub->iface);
-    if (hr != S_OK)
+    /* For IUnknown, use the object directly without AddRef - the stub manager
+     * already holds the reference. QueryInterface would return the same pointer
+     * and add an extra ref, causing incorrect refcount (e.g. in oleaut32
+     * LPSAFEARRAY_UserMarshal tests). */
+    if (IsEqualIID(iid, &IID_IUnknown))
     {
-        free(stub);
-        return NULL;
+        stub->iface = m->object;
+    }
+    else
+    {
+        hr = IUnknown_QueryInterface(m->object, iid, (void **)&stub->iface);
+        if (hr != S_OK)
+        {
+            free(stub);
+            return NULL;
+        }
     }
 
     hr = rpc_create_serverchannel(dest_context, dest_context_data, &stub->chan);
     if (hr != S_OK)
     {
-        IUnknown_Release(stub->iface);
+        if (!IsEqualIID(iid, &IID_IUnknown))
+            IUnknown_Release(stub->iface);
         free(stub);
         return NULL;
     }
@@ -129,7 +141,9 @@ static void stub_manager_delete_ifstub(struct stub_manager *m, struct ifstub *if
         rpc_unregister_interface(&ifstub->iid, TRUE);
 
     if (ifstub->stubbuffer) IRpcStubBuffer_Release(ifstub->stubbuffer);
-    IUnknown_Release(ifstub->iface);
+    /* For IUnknown we use m->object directly without AddRef, so don't Release */
+    if (!IsEqualIID(&ifstub->iid, &IID_IUnknown))
+        IUnknown_Release(ifstub->iface);
     IRpcChannelBuffer_Release(ifstub->chan);
 
     free(ifstub);
