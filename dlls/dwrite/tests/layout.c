@@ -766,7 +766,7 @@ static void ok_sequence_(struct drawcall_sequence **seq, int sequence_index,
             int cmp = lstrcmpW(expected->string, actual->string);
             if (cmp != 0 && todo) {
                 failcount++;
-            /* todo_wine */
+            todo_wine
                 ok_(file, line) (0, "%s: glyphrun string %s was expected, but got %s instead\n",
                     context, wine_dbgstr_w(expected->string), wine_dbgstr_w(actual->string));
             }
@@ -3690,7 +3690,7 @@ static void test_GetMetrics(void)
     ok(metrics.height > 0.0, "got %.2f\n", metrics.height);
     ok(metrics.layoutWidth == 500.0, "got %.2f\n", metrics.layoutWidth);
     ok(metrics.layoutHeight == 1000.0, "got %.2f\n", metrics.layoutHeight);
-    todo_wine
+    /* todo_wine */
     ok(metrics.maxBidiReorderingDepth > 1, "got %u\n", metrics.maxBidiReorderingDepth);
     ok(metrics.lineCount == 1, "got %u\n", metrics.lineCount);
 
@@ -6368,10 +6368,10 @@ static void test_tab_stops(void)
     ok(!clusters[1].isWhitespace, "Unexpected isWhitespace.\n");
     ok(clusters[2].isWhitespace, "Unexpected isWhitespace.\n");
     ok(!clusters[3].isWhitespace, "Unexpected isWhitespace.\n");
-todo_wine {
+/*todo_wine {*/
     ok(clusters[0].width == tabstop, "Unexpected tab width.\n");
     ok(clusters[1].width + clusters[2].width == tabstop, "Unexpected tab width.\n");
-}
+/*}*/
     range.startPosition = 0;
     range.length = ~0u;
     hr = IDWriteTextLayout_SetFontSize(layout, 20.0f, range);
@@ -6386,10 +6386,10 @@ todo_wine {
     ok(!clusters[1].isWhitespace, "Unexpected isWhitespace.\n");
     ok(clusters[2].isWhitespace, "Unexpected isWhitespace.\n");
     ok(!clusters[3].isWhitespace, "Unexpected isWhitespace.\n");
-todo_wine {
+/*todo_wine {*/
     ok(clusters[0].width == tabstop, "Unexpected tab width.\n");
     ok(clusters[1].width + clusters[2].width == tabstop, "Unexpected tab width.\n");
-}
+/*}*/
     IDWriteTextLayout_Release(layout);
 
     IDWriteTextFormat_Release(format);
@@ -7008,7 +7008,7 @@ static void test_HitTestTextRange(void)
     /* Start index exceeding layout text length, dummy range returned. */
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 7, 10, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7020,7 +7020,7 @@ if (SUCCEEDED(hr))
     /* Length exceeding layout text length, trimmed. */
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 0, 10, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7037,7 +7037,7 @@ if (SUCCEEDED(hr))
 
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 0, 6, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7059,7 +7059,7 @@ if (SUCCEEDED(hr))
 
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 0, 6, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7073,7 +7073,7 @@ if (SUCCEEDED(hr))
 }
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 7, 10, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
