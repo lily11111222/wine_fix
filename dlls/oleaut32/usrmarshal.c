@@ -806,6 +806,8 @@ ULONG WINAPI LPSAFEARRAY_UserSize(ULONG *pFlags, ULONG StartingSize, LPSAFEARRAY
             {
                 BSTR* lpBstr;
 
+                /* SAFEARR_BSTR has [size_is(Size), ref] wireBSTR *aBstr: offset table before BSTR data */
+                size += ulCellCount * sizeof(DWORD);
                 for (lpBstr = psa->pvData; ulCellCount; ulCellCount--, lpBstr++)
                     size = BSTR_UserSize(pFlags, size, lpBstr);
 
@@ -949,9 +951,16 @@ unsigned char * WINAPI LPSAFEARRAY_UserMarshal(ULONG *pFlags, unsigned char *Buf
                 case SF_BSTR:
                 {
                     BSTR* lpBstr;
+                    unsigned char *base = Buffer;
+                    ULONG i;
 
-                    for (lpBstr = psa->pvData; ulCellCount; ulCellCount--, lpBstr++)
+                    /* Write offset table for [ref] wireBSTR array */
+                    Buffer += ulCellCount * sizeof(DWORD);
+                    for (i = 0, lpBstr = psa->pvData; ulCellCount; ulCellCount--, i++, lpBstr++)
+                    {
+                        *(ULONG *)(base + i * sizeof(DWORD)) = (ULONG)(Buffer - base);
                         Buffer = BSTR_UserMarshal(pFlags, Buffer, lpBstr);
+                    }
 
                     break;
                 }
@@ -1160,6 +1169,8 @@ unsigned char * WINAPI LPSAFEARRAY_UserUnmarshal(ULONG *pFlags, unsigned char *B
             {
                 BSTR* lpBstr;
 
+                /* Skip offset table for [ref] wireBSTR array */
+                Buffer += cell_count * sizeof(DWORD);
                 for (lpBstr = (*ppsa)->pvData; cell_count; cell_count--, lpBstr++)
                     Buffer = BSTR_UserUnmarshal(pFlags, Buffer, lpBstr);
 
