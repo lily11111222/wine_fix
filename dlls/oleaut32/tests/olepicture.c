@@ -1094,7 +1094,7 @@ static void test_OleLoadPicturePath(void)
 
     pic = (IPicture *)0xdeadbeef;
     hres = OleLoadPicturePath(emptyW, NULL, 0, 0, NULL, (void **)&pic);
-    todo_wine
+    /* todo_wine */
     ok(hres == INET_E_UNKNOWN_PROTOCOL || /* XP/Vista+ */
        broken(hres == E_UNEXPECTED) || /* NT4 */
        broken(hres == E_OUTOFMEMORY), /* Win2k/Win2k3 */
@@ -1104,7 +1104,7 @@ static void test_OleLoadPicturePath(void)
 
     pic = (IPicture *)0xdeadbeef;
     hres = OleLoadPicturePath(emptyW, NULL, 0, 0, &IID_IPicture, (void **)&pic);
-    todo_wine
+    /* todo_wine */
     ok(hres == INET_E_UNKNOWN_PROTOCOL || /* XP/Vista+ */
        broken(hres == E_UNEXPECTED) || /* NT4 */
        broken(hres == E_OUTOFMEMORY), /* Win2k/Win2k3 */

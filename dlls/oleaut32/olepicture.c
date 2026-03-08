@@ -2658,6 +2658,9 @@ HRESULT WINAPI OleLoadPicturePath( LPOLESTR szURLorPath, LPUNKNOWN punkCaller,
 
   *ppvRet = NULL;
 
+  if (!szURLorPath[0])
+      return INET_E_UNKNOWN_PROTOCOL;
+
   /* Convert file URLs to DOS paths. */
   if (wcsncmp(szURLorPath, L"file:", 5) == 0) {
       DWORD size;
