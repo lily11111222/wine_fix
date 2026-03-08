@@ -4028,10 +4028,141 @@ static HRESULT WINAPI dwritetextlayout_HitTestTextRange(IDWriteTextLayout4 *ifac
     UINT32 textPosition, UINT32 textLength, FLOAT originX, FLOAT originY,
     DWRITE_HIT_TEST_METRICS *metrics, UINT32 max_metricscount, UINT32* actual_metricscount)
 {
-    FIXME("%p, %u, %u, %f, %f, %p, %u, %p): stub\n", iface, textPosition, textLength, originX, originY, metrics,
+    struct dwrite_textlayout *layout = impl_from_IDWriteTextLayout4(iface);
+    struct layout_effective_run *erun;
+    struct layout_effective_inline *inrun;
+    D2D1_RECT_F bbox;
+    UINT32 cluster_pos, seg_start, seg_len, overlap_start, overlap_end, overlap_len;
+    UINT32 i, j, count = 0;
+    HRESULT hr;
+
+    TRACE("%p, %u, %u, %f, %f, %p, %u, %p.\n", iface, textPosition, textLength, originX, originY, metrics,
         max_metricscount, actual_metricscount);
 
-    return E_NOTIMPL;
+    if (!actual_metricscount)
+        return E_INVALIDARG;
+
+    hr = layout_compute_effective_runs(layout);
+    if (FAILED(hr))
+        return hr;
+
+    /* Clamp range to layout bounds */
+    if (textPosition >= layout->len) {
+        *actual_metricscount = 1;
+        if (metrics && max_metricscount >= 1) {
+            BOOL has_trailing_inline = (layout->cluster_count > 0 &&
+                layout->clusters[layout->cluster_count - 1].run->kind == LAYOUT_RUN_INLINE);
+            metrics[0].textPosition = layout->len;
+            metrics[0].length = 0;
+            metrics[0].left = 0.0f;
+            metrics[0].top = 0.0f;
+            metrics[0].width = 0.0f;
+            metrics[0].height = 0.0f;
+            metrics[0].bidiLevel = 0;
+            metrics[0].isText = !has_trailing_inline;
+            metrics[0].isTrimmed = FALSE;
+        }
+        return S_OK;
+    }
+
+    textLength = min(textLength, layout->len - textPosition);
+
+    erun = layout_get_next_erun(layout, NULL);
+    inrun = layout_get_next_inline_run(layout, NULL);
+
+    cluster_pos = 0;
+    for (i = 0; i < layout->cluster_count; ) {
+        BOOL seg_is_inline = (layout->clusters[i].run->kind == LAYOUT_RUN_INLINE);
+        const struct layout_run *seg_run = layout->clusters[i].run;
+
+        seg_start = cluster_pos;
+        seg_len = 0;
+        j = i;
+        while (j < layout->cluster_count && (layout->clusters[j].run->kind == LAYOUT_RUN_INLINE) == seg_is_inline) {
+            seg_len += layout->clustermetrics[j].length;
+            j++;
+        }
+        cluster_pos += seg_len;
+
+        overlap_start = max(seg_start, textPosition);
+        overlap_end = min(seg_start + seg_len, textPosition + textLength);
+        if (overlap_start < overlap_end) {
+            overlap_len = overlap_end - overlap_start;
+
+            if (count >= max_metricscount) {
+                if (metrics)
+                    *actual_metricscount = count + 1;
+                return E_NOT_SUFFICIENT_BUFFER;
+            }
+
+            if (metrics && count < max_metricscount) {
+                FLOAT height_val;
+                if (seg_is_inline) {
+                    layout_get_inlineobj_bbox(inrun, &bbox);
+                    height_val = bbox.bottom - bbox.top;
+                } else {
+                    UINT32 hit_line = 0;
+                    memset(&bbox, 0, sizeof(bbox));
+                    while (erun) {
+                        UINT32 run_start = erun->run->start_position + erun->start;
+                        UINT32 run_end = run_start + erun->length;
+                        if (run_start >= seg_start + seg_len)
+                            break;
+                        if (run_end > seg_start) {
+                            D2D1_RECT_F run_bbox;
+                            layout_get_erun_bbox(layout, erun, &run_bbox);
+                            if (bbox.right == bbox.left && bbox.bottom == bbox.top) {
+                                bbox = run_bbox;
+                                hit_line = erun->line;
+                            } else {
+                                bbox.left = min(bbox.left, run_bbox.left);
+                                bbox.top = min(bbox.top, run_bbox.top);
+                                bbox.right = max(bbox.right, run_bbox.right);
+                                bbox.bottom = max(bbox.bottom, run_bbox.bottom);
+                            }
+                        }
+                        erun = layout_get_next_erun(layout, erun);
+                    }
+                    height_val = (bbox.bottom > bbox.top && layout->metrics.lineCount > 0) ?
+                        layout->lines[hit_line].metrics.height : (bbox.bottom - bbox.top);
+                }
+
+                metrics[count].textPosition = overlap_start;
+                metrics[count].length = overlap_len;
+                metrics[count].left = bbox.left + originX;
+                metrics[count].top = bbox.top + originY;
+                metrics[count].width = bbox.right - bbox.left;
+                metrics[count].height = height_val;
+                metrics[count].bidiLevel = seg_is_inline ? 0 : seg_run->u.regular.run.bidiLevel;
+                metrics[count].isText = !seg_is_inline;
+                metrics[count].isTrimmed = FALSE;
+            }
+            count++;
+        }
+
+        if (seg_is_inline)
+            inrun = layout_get_next_inline_run(layout, inrun);
+        else {
+            while (erun) {
+                UINT32 run_start = erun->run->start_position + erun->start;
+                UINT32 run_end = run_start + erun->length;
+                if (run_end > seg_start)
+                    break;
+                erun = layout_get_next_erun(layout, erun);
+            }
+            while (erun) {
+                UINT32 run_start = erun->run->start_position + erun->start;
+                if (run_start >= seg_start + seg_len)
+                    break;
+                erun = layout_get_next_erun(layout, erun);
+            }
+        }
+
+        i = j;
+    }
+
+    *actual_metricscount = count;
+    return S_OK;
 }
 
 static HRESULT WINAPI dwritetextlayout1_SetPairKerning(IDWriteTextLayout4 *iface, BOOL is_pairkerning_enabled,

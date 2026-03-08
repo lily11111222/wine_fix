@@ -7008,7 +7008,7 @@ static void test_HitTestTextRange(void)
     /* Start index exceeding layout text length, dummy range returned. */
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 7, 10, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7020,7 +7020,7 @@ if (SUCCEEDED(hr))
     /* Length exceeding layout text length, trimmed. */
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 0, 10, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7037,7 +7037,7 @@ if (SUCCEEDED(hr))
 
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 0, 6, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7059,7 +7059,7 @@ if (SUCCEEDED(hr))
 
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 0, 6, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
@@ -7073,7 +7073,7 @@ if (SUCCEEDED(hr))
 }
     count = 0;
     hr = IDWriteTextLayout_HitTestTextRange(layout, 7, 10, 0.0f, 0.0f, metrics, ARRAY_SIZE(metrics), &count);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 if (SUCCEEDED(hr))
 {
