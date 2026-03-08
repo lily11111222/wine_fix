@@ -1946,7 +1946,8 @@ static BOOL win32u_wglQueryPbufferARB( struct wgl_pbuffer *pbuffer, int attrib, 
 
     default:
         FIXME( "unexpected attribute %x\n", attrib );
-        break;
+        RtlSetLastWin32Error( ERROR_INVALID_DATA );
+        return GL_FALSE;
     }
 
     return GL_TRUE;
