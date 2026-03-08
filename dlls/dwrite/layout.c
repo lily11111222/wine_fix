@@ -1147,6 +1147,36 @@ static HRESULT layout_shape_run(struct dwrite_textlayout *layout, struct regular
     return hr;
 }
 
+static void layout_apply_tab_widths(struct dwrite_textlayout *layout)
+{
+    FLOAT tabstop = layout->format.tabstop;
+    FLOAT x = 0.0f;
+    UINT32 i;
+
+    if (tabstop <= 0.0f)
+        return;
+
+    for (i = 0; i < layout->cluster_count; i++) {
+        DWRITE_CLUSTER_METRICS *metrics = &layout->clustermetrics[i];
+        struct layout_cluster *lc = &layout->clusters[i];
+
+        if (metrics->isNewline) {
+            x = 0.0f;
+            continue;
+        }
+
+        if (lc->run->kind == LAYOUT_RUN_REGULAR && metrics->isWhitespace && metrics->length == 1) {
+            WCHAR ch = lc->run->u.regular.descr.string[lc->position];
+            if (ch == '\t') {
+                FLOAT rem = fmodf(x, tabstop);
+                metrics->width = (rem > 0.0f) ? (tabstop - rem) : tabstop;
+            }
+        }
+
+        x += metrics->width;
+    }
+}
+
 static HRESULT layout_compute_runs(struct dwrite_textlayout *layout)
 {
     struct layout_run *r;
@@ -1232,6 +1262,8 @@ static HRESULT layout_compute_runs(struct dwrite_textlayout *layout)
         layout->cluster_count = cluster;
         if (cluster)
             layout->clustermetrics[cluster-1].canWrapLineAfter = 1;
+
+        layout_apply_tab_widths(layout);
     }
 
     return hr;

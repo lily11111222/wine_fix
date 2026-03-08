@@ -6368,10 +6368,10 @@ static void test_tab_stops(void)
     ok(!clusters[1].isWhitespace, "Unexpected isWhitespace.\n");
     ok(clusters[2].isWhitespace, "Unexpected isWhitespace.\n");
     ok(!clusters[3].isWhitespace, "Unexpected isWhitespace.\n");
-todo_wine {
+/*todo_wine {*/
     ok(clusters[0].width == tabstop, "Unexpected tab width.\n");
     ok(clusters[1].width + clusters[2].width == tabstop, "Unexpected tab width.\n");
-}
+/*}*/
     range.startPosition = 0;
     range.length = ~0u;
     hr = IDWriteTextLayout_SetFontSize(layout, 20.0f, range);
@@ -6386,10 +6386,10 @@ todo_wine {
     ok(!clusters[1].isWhitespace, "Unexpected isWhitespace.\n");
     ok(clusters[2].isWhitespace, "Unexpected isWhitespace.\n");
     ok(!clusters[3].isWhitespace, "Unexpected isWhitespace.\n");
-todo_wine {
+/*todo_wine {*/
     ok(clusters[0].width == tabstop, "Unexpected tab width.\n");
     ok(clusters[1].width + clusters[2].width == tabstop, "Unexpected tab width.\n");
-}
+/*}*/
     IDWriteTextLayout_Release(layout);
 
     IDWriteTextFormat_Release(format);
