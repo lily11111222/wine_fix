@@ -498,13 +498,13 @@ static void test_marshal_LPSAFEARRAY(void)
     init_user_marshal_cb(&umcb, &stub_msg, &rpc_msg, NULL, 0, MSHCTX_DIFFERENTMACHINE);
     size = LPSAFEARRAY_UserSize(&umcb.Flags, 0, &lpsa);
     expected = 44 + 28 * lpsa->rgsabound[0].cElements;
-    todo_wine
+    /* todo_wine */
     ok(size == expected || size == expected + 8,  /* win64 */
        "size should be %lu bytes, not %lu\n", expected, size);
     buffer = HeapAlloc(GetProcessHeap(), 0, size);
     init_user_marshal_cb(&umcb, &stub_msg, &rpc_msg, buffer, size, MSHCTX_DIFFERENTMACHINE);
     next = LPSAFEARRAY_UserMarshal(&umcb.Flags, buffer, &lpsa);
-    todo_wine
+    /* todo_wine */
     ok(next - buffer == expected || broken(next - buffer + sizeof(DWORD) == expected),
             "Marshaled %lu bytes, expected %lu\n", (ULONG) (next - buffer), expected);
     lpsa->cbElements = 16;  /* VARIANT wire size */
