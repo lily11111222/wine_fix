@@ -1338,6 +1338,7 @@ static HRESULT OLEPictureImpl_LoadEnhMetafile(OLEPictureImpl *This,
 
     This->desc.picType = PICTYPE_ENHMETAFILE;
     This->desc.emf.hemf = hemf;
+    This->keepOrigFormat = FALSE;
 
     This->origWidth = 0;
     This->origHeight = 0;
@@ -1366,6 +1367,7 @@ static HRESULT OLEPictureImpl_LoadAPM(OLEPictureImpl *This,
     This->desc.wmf.hmeta = hmf;
     This->desc.wmf.xExt = 0;
     This->desc.wmf.yExt = 0;
+    This->keepOrigFormat = FALSE;
 
     This->origWidth = 0;
     This->origHeight = 0;

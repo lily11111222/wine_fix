@@ -794,7 +794,7 @@ static void test_apm(void)
     expect_eq(cxy,  1323l, LONG, "%ld");
 
     ole_check(IPicture_get_KeepOriginalFormat(pict, &keep));
-    todo_wine expect_eq(keep, (LONG)FALSE, LONG, "%ld");
+    /* todo_wine */ expect_eq(keep, (LONG)FALSE, LONG, "%ld");
 
     ole_expect(IPicture_get_hPal(pict, &handle), E_FAIL);
     IPicture_Release(pict);
@@ -850,7 +850,7 @@ static void test_enhmetafile(void)
     expect_eq(cxy, -25l, LONG, "%ld");
 
     ole_check(IPicture_get_KeepOriginalFormat(pict, &keep));
-    todo_wine expect_eq(keep, (LONG)FALSE, LONG, "%ld");
+    /* todo_wine */ expect_eq(keep, (LONG)FALSE, LONG, "%ld");
 
     IPicture_Release(pict);
     IStream_Release(stream);
