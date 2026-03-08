@@ -7349,22 +7349,129 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
 
                         if (FAILED(hres))
                         {
-                            ERR("failed to convert param %d to %s from %s\n", i,
-                                debugstr_vt(rgvt[i]), debugstr_variant(src_arg));
-                            break;
+                            /* Special handling for interface pointer type conversion between VT_UNKNOWN and VT_DISPATCH */
+                            if ((rgvt[i] & VT_BYREF) &&
+                                (V_VT(src_arg) & VT_BYREF) &&
+                                ((rgvt[i] & VT_TYPEMASK) == VT_DISPATCH || (rgvt[i] & VT_TYPEMASK) == VT_UNKNOWN) &&
+                                ((V_VT(src_arg) & VT_TYPEMASK) == VT_DISPATCH || (V_VT(src_arg) & VT_TYPEMASK) == VT_UNKNOWN) &&
+                                V_UNKNOWNREF(src_arg))
+                            {
+                                if (!*V_UNKNOWNREF(src_arg))
+                                {
+                                    /* [out] parameter with NULL: pass pointer through, IUnknown** is compatible with IDispatch** */
+                                    V_VT(&rgvarg[i]) = rgvt[i];
+                                    V_DISPATCHREF(&rgvarg[i]) = (IDispatch **)V_UNKNOWNREF(src_arg);
+                                    prgpvarg[i] = &rgvarg[i];
+                                    hres = S_OK;
+                                }
+                                else
+                                {
+                                    IUnknown *userdefined_iface;
+                                    GUID guid;
+                                    const TYPEDESC *target_tdesc = tdesc;
+
+                                    /* Traverse pointer chain to find VT_USERDEFINED (e.g. ISomethingFromDispatch** -> * -> interface) */
+                                    while (target_tdesc->vt == VT_PTR)
+                                        target_tdesc = target_tdesc->lptdesc;
+
+                                    if (target_tdesc->vt != VT_USERDEFINED)
+                                    {
+                                        ERR("failed to convert param %d to %s from %s\n", i,
+                                            debugstr_vt(rgvt[i]), debugstr_variant(src_arg));
+                                        break;
+                                    }
+
+                                    hres = get_iface_guid((ITypeInfo*)iface, target_tdesc->hreftype, &guid);
+                                    if (SUCCEEDED(hres))
+                                    {
+                                        hres = IUnknown_QueryInterface(*V_UNKNOWNREF(src_arg), &guid, (void**)&userdefined_iface);
+                                        if (SUCCEEDED(hres))
+                                        {
+                                            hres = VariantCopy(&rgvarg[i], src_arg);
+                                            if (SUCCEEDED(hres))
+                                            {
+                                                IUnknown_Release(*V_UNKNOWNREF(&rgvarg[i]));
+                                                *V_UNKNOWNREF(&rgvarg[i]) = userdefined_iface;
+                                                V_VT(&rgvarg[i]) = rgvt[i];
+                                                prgpvarg[i] = &rgvarg[i];
+                                            }
+                                            else
+                                                IUnknown_Release(userdefined_iface);
+                                        }
+                                    }
+
+                                    if (FAILED(hres))
+                                    {
+                                        ERR("failed to convert param %d to %s from %s\n", i,
+                                            debugstr_vt(rgvt[i]), debugstr_variant(src_arg));
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                ERR("failed to convert param %d to %s from %s\n", i,
+                                    debugstr_vt(rgvt[i]), debugstr_variant(src_arg));
+                                break;
+                            }
                         }
                         prgpvarg[i] = &rgvarg[i];
                     }
                     else
                     {
-                        prgpvarg[i] = src_arg;
+                        /* Special handling for interface pointer type conversion */
+                        if ((rgvt[i] & VT_BYREF) &&
+                            (V_VT(src_arg) & VT_BYREF) &&
+                            ((rgvt[i] & VT_TYPEMASK) == VT_DISPATCH || (rgvt[i] & VT_TYPEMASK) == VT_UNKNOWN) &&
+                            ((V_VT(src_arg) & VT_TYPEMASK) == VT_DISPATCH || (V_VT(src_arg) & VT_TYPEMASK) == VT_UNKNOWN) &&
+                            (tdesc->vt == VT_USERDEFINED || (tdesc->vt == VT_PTR && tdesc->lptdesc->vt == VT_USERDEFINED)) &&
+                            V_UNKNOWNREF(src_arg) && *V_UNKNOWNREF(src_arg))
+                        {
+                            IUnknown *userdefined_iface;
+                            GUID guid;
+                            const TYPEDESC *target_tdesc = tdesc;
+
+                            if (tdesc->vt == VT_PTR)
+                                target_tdesc = tdesc->lptdesc;
+
+                            hres = get_iface_guid((ITypeInfo*)iface, target_tdesc->hreftype, &guid);
+                            if (SUCCEEDED(hres))
+                            {
+                                hres = IUnknown_QueryInterface(*V_UNKNOWNREF(src_arg), &guid, (void**)&userdefined_iface);
+                                if (SUCCEEDED(hres))
+                                {
+                                    /* Create a copy of the variant with the converted interface */
+                                    hres = VariantCopy(&rgvarg[i], src_arg);
+                                    if (SUCCEEDED(hres))
+                                    {
+                                        IUnknown_Release(*V_UNKNOWNREF(&rgvarg[i]));
+                                        *V_UNKNOWNREF(&rgvarg[i]) = userdefined_iface;
+                                        prgpvarg[i] = &rgvarg[i];
+                                    }
+                                    else
+                                        IUnknown_Release(userdefined_iface);
+                                }
+                            }
+
+                            if (FAILED(hres))
+                            {
+                                /* Fall back to using the original argument */
+                                prgpvarg[i] = src_arg;
+                                hres = S_OK;
+                            }
+                        }
+                        else
+                        {
+                            prgpvarg[i] = src_arg;
+                        }
                     }
 
                     if((tdesc->vt == VT_USERDEFINED || (tdesc->vt == VT_PTR && tdesc->lptdesc->vt == VT_USERDEFINED))
-                       && (V_VT(prgpvarg[i]) == VT_DISPATCH || V_VT(prgpvarg[i]) == VT_UNKNOWN)
-                       && V_UNKNOWN(prgpvarg[i])) {
+                       && (((V_VT(prgpvarg[i]) == VT_DISPATCH || V_VT(prgpvarg[i]) == VT_UNKNOWN) && V_UNKNOWN(prgpvarg[i]))
+                           || ((V_VT(prgpvarg[i]) == (VT_DISPATCH | VT_BYREF) || V_VT(prgpvarg[i]) == (VT_UNKNOWN | VT_BYREF)) && V_UNKNOWNREF(prgpvarg[i]) && *V_UNKNOWNREF(prgpvarg[i])))) {
                         IUnknown *userdefined_iface;
                         GUID guid;
+                        IUnknown *src_iface;
 
                         if (tdesc->vt == VT_PTR)
                             tdesc = tdesc->lptdesc;
@@ -7373,14 +7480,26 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
                         if(FAILED(hres))
                             break;
 
-                        hres = IUnknown_QueryInterface(V_UNKNOWN(prgpvarg[i]), &guid, (void**)&userdefined_iface);
+                        /* Get the source interface pointer */
+                        if (V_VT(prgpvarg[i]) & VT_BYREF)
+                            src_iface = *V_UNKNOWNREF(prgpvarg[i]);
+                        else
+                            src_iface = V_UNKNOWN(prgpvarg[i]);
+
+                        hres = IUnknown_QueryInterface(src_iface, &guid, (void**)&userdefined_iface);
                         if(FAILED(hres)) {
                             ERR("argument does not support %s interface\n", debugstr_guid(&guid));
                             break;
                         }
 
-                        IUnknown_Release(V_UNKNOWN(prgpvarg[i]));
-                        V_UNKNOWN(prgpvarg[i]) = userdefined_iface;
+                        /* Update the interface pointer */
+                        if (V_VT(prgpvarg[i]) & VT_BYREF) {
+                            IUnknown_Release(*V_UNKNOWNREF(prgpvarg[i]));
+                            *V_UNKNOWNREF(prgpvarg[i]) = userdefined_iface;
+                        } else {
+                            IUnknown_Release(V_UNKNOWN(prgpvarg[i]));
+                            V_UNKNOWN(prgpvarg[i]) = userdefined_iface;
+                        }
                     }
                 }
                 else if (wParamFlags & PARAMFLAG_FOPT)
