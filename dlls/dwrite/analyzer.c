@@ -2698,7 +2698,6 @@ static ULONG WINAPI customfontfallback_Release(IDWriteFontFallback1 *iface)
 
     if (!refcount)
     {
-        IDWriteFactory7_Release(fallback->factory);
         if (fallback->systemcollection)
             IDWriteFontCollection_Release(fallback->systemcollection);
         release_fallback_data(&fallback->data);
@@ -2955,7 +2954,6 @@ static HRESULT fallbackbuilder_create_fallback(struct dwrite_fontfallback_builde
     fallback->IDWriteFontFallback1_iface.lpVtbl = &customfontfallbackvtbl;
     fallback->refcount = 1;
     fallback->factory = builder->factory;
-    IDWriteFactory7_AddRef(fallback->factory);
     if (FAILED(hr = IDWriteFactory_GetSystemFontCollection((IDWriteFactory *)fallback->factory,
             &fallback->systemcollection, FALSE)))
     {
