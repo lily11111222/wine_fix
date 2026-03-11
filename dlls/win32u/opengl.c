@@ -2058,17 +2058,26 @@ static BOOL win32u_wglSetPbufferAttribARB( struct wgl_pbuffer *pbuffer, const in
 {
     TRACE( "pbuffer %p, attribs %p\n", pbuffer, attribs );
 
-    if (!pbuffer->texture_format)
-    {
-        RtlSetLastWin32Error( ERROR_INVALID_HANDLE );
-        return GL_FALSE;
-    }
-
     for (; attribs && attribs[0]; attribs += 2)
     {
         switch (attribs[0])
         {
+        case WGL_PBUFFER_WIDTH_ARB:
+        case WGL_PBUFFER_HEIGHT_ARB:
+        case WGL_PBUFFER_LOST_ARB:
+        case WGL_TEXTURE_FORMAT_ARB:
+        case WGL_TEXTURE_TARGET_ARB:
+        case WGL_MIPMAP_TEXTURE_ARB:
+            TRACE( "read-only attribute 0x%x\n", attribs[0] );
+            RtlSetLastWin32Error( ERROR_INVALID_DATA );
+            return GL_FALSE;
+
         case WGL_MIPMAP_LEVEL_ARB:
+            if (!pbuffer->texture_format)
+            {
+                RtlSetLastWin32Error( ERROR_INVALID_DATA );
+                return GL_FALSE;
+            }
             TRACE( "WGL_MIPMAP_LEVEL_ARB %#x\n", attribs[1] );
             pbuffer->mipmap_level = attribs[1];
             break;
