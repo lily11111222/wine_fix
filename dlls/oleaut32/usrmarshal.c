@@ -1245,7 +1245,6 @@ HRESULT CALLBACK IDispatch_Invoke_Proxy(
   VARIANT VarResult;
   UINT* rgVarRefIdx = NULL;
   VARIANTARG* rgVarRef = NULL;
-  void **rgOrigRef = NULL;
   UINT u, cVarRef;
   UINT uArgErr;
   EXCEPINFO ExcepInfo;
@@ -1268,15 +1267,13 @@ HRESULT CALLBACK IDispatch_Invoke_Proxy(
     }
   }
   if (cVarRef) {
-    rgOrigRef = CoTaskMemAlloc(sizeof(void *)*cVarRef);
     rgVarRefIdx = CoTaskMemAlloc(sizeof(UINT)*cVarRef);
     rgVarRef = CoTaskMemAlloc(sizeof(VARIANTARG)*cVarRef);
-    /* make list of by-ref args, save caller ref pointers for copy-back */
+    /* make list of by-ref args */
     for (cVarRef=0,u=0; u<pDispParams->cArgs; u++) {
       VARIANTARG* arg = &pDispParams->rgvarg[u];
       if (V_ISBYREF(arg)) {
 	rgVarRefIdx[cVarRef] = u;
-	rgOrigRef[cVarRef] = (void *)V_UNION(arg, ppunkVal);
 	VariantInit(&rgVarRef[cVarRef]);
 	VariantCopy(&rgVarRef[cVarRef], arg);
 	VariantClear(arg);
@@ -1306,27 +1303,10 @@ HRESULT CALLBACK IDispatch_Invoke_Proxy(
   if (cVarRef) {
     for (u=0; u<cVarRef; u++) {
       unsigned i = rgVarRefIdx[u];
-      VARIANTARG *dst = &pDispParams->rgvarg[i];
-      VARIANTARG *src = &rgVarRef[u];
-      void *orig_ref = rgOrigRef[u];
-      VARTYPE vt = V_VT(src);
-
-      if ((vt == (VT_UNKNOWN|VT_BYREF) || vt == (VT_DISPATCH|VT_BYREF)) && orig_ref) {
-	IUnknown *old_val = *(IUnknown **)orig_ref;
-	IUnknown *new_val = *V_UNKNOWNREF(src);
-	if (old_val)
-	  IUnknown_Release(old_val);
-	*(IUnknown **)orig_ref = new_val;
-	if (new_val)
-	  IUnknown_AddRef(new_val);
-	V_VT(dst) = vt;
-	V_UNKNOWNREF(dst) = (IUnknown **)orig_ref;
-      } else {
-	VariantCopy(dst, src);
-      }
-      VariantClear(src);
+      VariantCopy(&pDispParams->rgvarg[i],
+		  &rgVarRef[u]);
+      VariantClear(&rgVarRef[u]);
     }
-    CoTaskMemFree(rgOrigRef);
     CoTaskMemFree(rgVarRef);
     CoTaskMemFree(rgVarRefIdx);
   }
