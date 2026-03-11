@@ -327,7 +327,8 @@ static unsigned char* interface_user_marshal(ULONG *pFlags, unsigned char *Buffe
 {
   TRACE("%#lx, %p, %p.\n", *pFlags, Buffer, punk);
 
-  /* first DWORD is used to store pointer itself, truncated on win64 */
+  /* first DWORD is used to store pointer itself, truncated on win64.
+   * Windows uses pointer+1 (win9x used raw pointer). */
   if(!punk)
   {
       memset(Buffer, 0, sizeof(ULONG));
@@ -335,7 +336,7 @@ static unsigned char* interface_user_marshal(ULONG *pFlags, unsigned char *Buffe
   }
   else
   {
-      *(DWORD*)Buffer = (DWORD_PTR)punk;
+      *(DWORD*)Buffer = (DWORD)(DWORD_PTR)punk + 1;
       Buffer += sizeof(DWORD);
   }
 
@@ -806,6 +807,8 @@ ULONG WINAPI LPSAFEARRAY_UserSize(ULONG *pFlags, ULONG StartingSize, LPSAFEARRAY
             {
                 BSTR* lpBstr;
 
+                /* SAFEARR_BSTR has [size_is(Size), ref] wireBSTR *aBstr: offset table before BSTR data */
+                size += ulCellCount * sizeof(DWORD);
                 for (lpBstr = psa->pvData; ulCellCount; ulCellCount--, lpBstr++)
                     size = BSTR_UserSize(pFlags, size, lpBstr);
 
@@ -835,8 +838,17 @@ ULONG WINAPI LPSAFEARRAY_UserSize(ULONG *pFlags, ULONG StartingSize, LPSAFEARRAY
                 VARIANT* lpVariant;
 
                 for (lpVariant = psa->pvData; ulCellCount; ulCellCount--, lpVariant++)
-                    size = VARIANT_UserSize(pFlags, size, lpVariant);
-
+                {
+                    /* VT_EMPTY/VT_NULL use 28-byte layout in array context (MS-OAUT) */
+                    if ((V_VT(lpVariant) & ~VT_TYPEMASK) == 0 &&
+                        (V_VT(lpVariant) == VT_EMPTY || V_VT(lpVariant) == VT_NULL))
+                    {
+                        ALIGN_LENGTH(size, 3);
+                        size += 28;
+                    }
+                    else
+                        size = VARIANT_UserSize(pFlags, size, lpVariant);
+                }
                 break;
             }
             case SF_RECORD:
@@ -940,9 +952,16 @@ unsigned char * WINAPI LPSAFEARRAY_UserMarshal(ULONG *pFlags, unsigned char *Buf
                 case SF_BSTR:
                 {
                     BSTR* lpBstr;
+                    unsigned char *base = Buffer;
+                    ULONG i;
 
-                    for (lpBstr = psa->pvData; ulCellCount; ulCellCount--, lpBstr++)
+                    /* Write offset table for [ref] wireBSTR array */
+                    Buffer += ulCellCount * sizeof(DWORD);
+                    for (i = 0, lpBstr = psa->pvData; ulCellCount; ulCellCount--, i++, lpBstr++)
+                    {
+                        *(ULONG *)(base + i * sizeof(DWORD)) = (ULONG)(Buffer - base);
                         Buffer = BSTR_UserMarshal(pFlags, Buffer, lpBstr);
+                    }
 
                     break;
                 }
@@ -968,10 +987,29 @@ unsigned char * WINAPI LPSAFEARRAY_UserMarshal(ULONG *pFlags, unsigned char *Buf
                 case SF_VARIANT:
                 {
                     VARIANT* lpVariant;
+                    variant_wire_t *var_header;
 
                     for (lpVariant = psa->pvData; ulCellCount; ulCellCount--, lpVariant++)
-                        Buffer = VARIANT_UserMarshal(pFlags, Buffer, lpVariant);
-
+                    {
+                        /* VT_EMPTY/VT_NULL use 28-byte layout in array context (MS-OAUT) */
+                        if ((V_VT(lpVariant) & ~VT_TYPEMASK) == 0 &&
+                            (V_VT(lpVariant) == VT_EMPTY || V_VT(lpVariant) == VT_NULL))
+                        {
+                            ALIGN_POINTER(Buffer, 3);
+                            var_header = (variant_wire_t *)Buffer;
+                            var_header->clSize = 3;  /* 28 bytes in quad words */
+                            var_header->rpcReserved = 0;
+                            var_header->vt = V_VT(lpVariant);
+                            var_header->wReserved1 = lpVariant->wReserved1;
+                            var_header->wReserved2 = lpVariant->wReserved2;
+                            var_header->wReserved3 = lpVariant->wReserved3;
+                            var_header->switch_is = V_VT(lpVariant);
+                            memset(Buffer + sizeof(variant_wire_t), 0, 8);
+                            Buffer += 28;
+                        }
+                        else
+                            Buffer = VARIANT_UserMarshal(pFlags, Buffer, lpVariant);
+                    }
                     break;
                 }
                 case SF_RECORD:
@@ -1132,6 +1170,8 @@ unsigned char * WINAPI LPSAFEARRAY_UserUnmarshal(ULONG *pFlags, unsigned char *B
             {
                 BSTR* lpBstr;
 
+                /* Skip offset table for [ref] wireBSTR array */
+                Buffer += cell_count * sizeof(DWORD);
                 for (lpBstr = (*ppsa)->pvData; cell_count; cell_count--, lpBstr++)
                     Buffer = BSTR_UserUnmarshal(pFlags, Buffer, lpBstr);
 
@@ -1159,10 +1199,26 @@ unsigned char * WINAPI LPSAFEARRAY_UserUnmarshal(ULONG *pFlags, unsigned char *B
             case SF_VARIANT:
             {
                 VARIANT* lpVariant;
+                variant_wire_t *var_header;
 
                 for (lpVariant = (*ppsa)->pvData; cell_count; cell_count--, lpVariant++)
-                    Buffer = VARIANT_UserUnmarshal(pFlags, Buffer, lpVariant);
-
+                {
+                    ALIGN_POINTER(Buffer, 3);
+                    var_header = (variant_wire_t *)Buffer;
+                    /* VT_EMPTY/VT_NULL use 28-byte layout in array context */
+                    if ((var_header->vt & ~VT_TYPEMASK) == 0 &&
+                        (var_header->vt == VT_EMPTY || var_header->vt == VT_NULL))
+                    {
+                        VariantClear(lpVariant);
+                        V_VT(lpVariant) = var_header->vt;
+                        lpVariant->wReserved1 = var_header->wReserved1;
+                        lpVariant->wReserved2 = var_header->wReserved2;
+                        lpVariant->wReserved3 = var_header->wReserved3;
+                        Buffer += 28;
+                    }
+                    else
+                        Buffer = VARIANT_UserUnmarshal(pFlags, Buffer, lpVariant);
+                }
                 break;
             }
             case SF_RECORD:

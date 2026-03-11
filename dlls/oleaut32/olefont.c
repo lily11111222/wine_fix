@@ -130,6 +130,49 @@ static HFONTItem *find_hfontitem(HFONT hfont)
     return NULL;
 }
 
+static BOOL logfont_matches(const LOGFONTW *left, const LOGFONTW *right)
+{
+    return left->lfHeight == right->lfHeight &&
+           left->lfWidth == right->lfWidth &&
+           left->lfEscapement == right->lfEscapement &&
+           left->lfOrientation == right->lfOrientation &&
+           left->lfWeight == right->lfWeight &&
+           left->lfItalic == right->lfItalic &&
+           left->lfUnderline == right->lfUnderline &&
+           left->lfStrikeOut == right->lfStrikeOut &&
+           left->lfCharSet == right->lfCharSet &&
+           left->lfOutPrecision == right->lfOutPrecision &&
+           left->lfClipPrecision == right->lfClipPrecision &&
+           left->lfQuality == right->lfQuality &&
+           left->lfPitchAndFamily == right->lfPitchAndFamily &&
+           !lstrcmpiW(left->lfFaceName, right->lfFaceName);
+}
+
+/* Find a matching font in the list and take one internal reference. */
+static HFONT get_cached_hfont(const LOGFONTW *logfont)
+{
+    HFONTItem *item;
+    LOGFONTW cached_logfont;
+    HFONT ret = NULL;
+
+    EnterCriticalSection(&OLEFontImpl_csHFONTLIST);
+    LIST_FOR_EACH_ENTRY(item, &OLEFontImpl_hFontList, HFONTItem, entry)
+    {
+        if (GetObjectW(item->gdiFont, sizeof(cached_logfont), &cached_logfont) != sizeof(cached_logfont))
+            continue;
+        if (!logfont_matches(logfont, &cached_logfont))
+            continue;
+
+        item->int_refs++;
+        item->total_refs++;
+        ret = item->gdiFont;
+        break;
+    }
+    LeaveCriticalSection(&OLEFontImpl_csHFONTLIST);
+
+    return ret;
+}
+
 /* Add an item to the list with one internal reference */
 static HRESULT add_hfontitem(HFONT hfont)
 {
@@ -598,10 +641,14 @@ static void realize_font(OLEFontImpl *This)
     logFont.lfQuality         = DEFAULT_QUALITY;
     logFont.lfPitchAndFamily  = DEFAULT_PITCH;
 
-    This->gdiFont = CreateFontIndirectW(&logFont);
+    This->gdiFont = get_cached_hfont(&logFont);
+    if (!This->gdiFont)
+    {
+        This->gdiFont = CreateFontIndirectW(&logFont);
+        if (!This->gdiFont) return;
+        add_hfontitem(This->gdiFont);
+    }
     This->dirty = FALSE;
-
-    add_hfontitem(This->gdiFont);
 
     /* Fixup the name and charset properties so that they match the
        selected font */

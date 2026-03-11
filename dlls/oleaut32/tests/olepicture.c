@@ -794,7 +794,7 @@ static void test_apm(void)
     expect_eq(cxy,  1323l, LONG, "%ld");
 
     ole_check(IPicture_get_KeepOriginalFormat(pict, &keep));
-    todo_wine expect_eq(keep, (LONG)FALSE, LONG, "%ld");
+    /* todo_wine */ expect_eq(keep, (LONG)FALSE, LONG, "%ld");
 
     ole_expect(IPicture_get_hPal(pict, &handle), E_FAIL);
     IPicture_Release(pict);
@@ -850,7 +850,7 @@ static void test_enhmetafile(void)
     expect_eq(cxy, -25l, LONG, "%ld");
 
     ole_check(IPicture_get_KeepOriginalFormat(pict, &keep));
-    todo_wine expect_eq(keep, (LONG)FALSE, LONG, "%ld");
+    /* todo_wine */ expect_eq(keep, (LONG)FALSE, LONG, "%ld");
 
     IPicture_Release(pict);
     IStream_Release(stream);
@@ -1094,7 +1094,7 @@ static void test_OleLoadPicturePath(void)
 
     pic = (IPicture *)0xdeadbeef;
     hres = OleLoadPicturePath(emptyW, NULL, 0, 0, NULL, (void **)&pic);
-    todo_wine
+    /* todo_wine */
     ok(hres == INET_E_UNKNOWN_PROTOCOL || /* XP/Vista+ */
        broken(hres == E_UNEXPECTED) || /* NT4 */
        broken(hres == E_OUTOFMEMORY), /* Win2k/Win2k3 */
@@ -1104,7 +1104,7 @@ static void test_OleLoadPicturePath(void)
 
     pic = (IPicture *)0xdeadbeef;
     hres = OleLoadPicturePath(emptyW, NULL, 0, 0, &IID_IPicture, (void **)&pic);
-    todo_wine
+    /* todo_wine */
     ok(hres == INET_E_UNKNOWN_PROTOCOL || /* XP/Vista+ */
        broken(hres == E_UNEXPECTED) || /* NT4 */
        broken(hres == E_OUTOFMEMORY), /* Win2k/Win2k3 */
@@ -1428,7 +1428,7 @@ static void test_load_save_icon(void)
     size = -1;
     hr = IPicture_SaveAsFile(pic, dst_stream, TRUE, &size);
     ok(hr == S_OK, "IPicture_SaveasFile error %#lx\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(size == 766, "expected 766, got %ld\n", size);
     mem = GlobalLock(hmem);
     ok(mem[0] == 0x00010000, "got wrong icon header %04lx\n", mem[0]);
@@ -1448,9 +1448,9 @@ static void test_load_save_icon(void)
 
     maxsize.QuadPart = 0;
     hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(maxsize.QuadPart == 774, "expected 774, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
 
     hr = IPersistStream_Save(src_stream, dst_stream, TRUE);
@@ -1458,9 +1458,9 @@ static void test_load_save_icon(void)
 
     maxsize.QuadPart = 0;
     hr = IPersistStream_GetSizeMax(src_stream, &maxsize);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "GetSizeMax error %#lx\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(maxsize.QuadPart == 774, "expected 774, got %s\n", wine_dbgstr_longlong(maxsize.QuadPart));
 
     IPersistStream_Release(src_stream);
@@ -1468,7 +1468,7 @@ static void test_load_save_icon(void)
 
     mem = GlobalLock(hmem);
     ok(!memcmp(mem, "lt\0\0", 4), "got wrong stream header %04lx\n", mem[0]);
-    todo_wine
+    /* todo_wine */
     ok(mem[1] == 766, "expected stream size 766, got %lu\n", mem[1]);
     ok(mem[2] == 0x00010000, "got wrong icon header %04lx\n", mem[2]);
 

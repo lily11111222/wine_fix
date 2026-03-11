@@ -360,12 +360,12 @@ static void test_pbuffers( HDC old_hdc )
     ok( (GetLastError() & 0xffff) == ERROR_INVALID_HANDLE, "got %#lx\n", GetLastError() );
     SetLastError( 0xdeadbeef );
     ret = pwglQueryPbufferARB( pbuffer, 0, &value );
-    todo_wine ok( ret == 0, "got %u\n", ret );
-    todo_wine ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA, "got %#lx\n", GetLastError() );
+    /* todo_wine */ ok( ret == 0, "got %u\n", ret );
+    /* todo_wine */ ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA, "got %#lx\n", GetLastError() );
     SetLastError( 0xdeadbeef );
     ret = pwglQueryPbufferARB( pbuffer, 0xdeadbeef, &value );
-    todo_wine ok( ret == 0, "got %u\n", ret );
-    todo_wine ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA, "got %#lx\n", GetLastError() );
+    /* todo_wine */ ok( ret == 0, "got %u\n", ret );
+    /* todo_wine */ ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA, "got %#lx\n", GetLastError() );
 
     value = 0xdeadbeef;
     ret = pwglQueryPbufferARB( pbuffer, WGL_PBUFFER_WIDTH_ARB, &value );

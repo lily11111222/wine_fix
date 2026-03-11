@@ -1284,7 +1284,11 @@ HRESULT WINAPI SafeArrayDestroyData(SAFEARRAY *psa)
       psa->pvData = NULL;
     }
     else
-      psa->fFeatures |= FADF_DATADELETED; /* Mark the data deleted */
+    {
+      /* Vector: data is inline with descriptor, clear FADF_CREATEVECTOR and pvData */
+      psa->fFeatures &= ~FADF_CREATEVECTOR;
+      psa->pvData = NULL;
+    }
 
   }
   return S_OK;
