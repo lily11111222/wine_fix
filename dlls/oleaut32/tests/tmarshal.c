@@ -1020,7 +1020,7 @@ static HRESULT WINAPI Widget_put_prop_opt_arg(
     IWidget* iface, INT opt, INT i)
 {
     trace("put_prop_opt_arg(%08x, %08x)\n", opt, i);
-    todo_wine ok(opt == 0, "got opt=%08x\n", opt);
+    /* todo_wine */ ok(opt == 0, "got opt=%08x\n", opt);
     ok(i == 0xcafe, "got i=%08x\n", i);
     return S_OK;
 }
@@ -2457,7 +2457,7 @@ if (hr == S_OK) {
     hr = IDispatch_Invoke(disp, DISPID_TM_IFACE_PTR, &IID_NULL, LOCALE_NEUTRAL,
             DISPATCH_METHOD, &dispparams, NULL, NULL, NULL);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
-    todo_wine {
+    /* todo_wine */ {
     ok(!unk_in_out, "[in, out] parameter should have been cleared.\n");
     release_iface(sfd3);
 }
@@ -2904,10 +2904,10 @@ if (hr == S_OK) {
     hr = IDispatch_Invoke(disp, DISPID_TM_COCLASS_PTR, &IID_NULL, LOCALE_NEUTRAL,
             DISPATCH_METHOD, &dispparams, NULL, NULL, NULL);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(!unk_in_out, "[in, out] parameter should have been cleared.\n");
 
-    todo_wine
+    /* todo_wine */
     release_iface(&class3->ICoclass1_iface);
 }
 
@@ -3670,11 +3670,11 @@ static void test_external_connection(void)
     /* Creating a stub for new iface causes new external connection. */
     hres = ItestDual_QueryInterface(iface, &IID_ITestSecondDisp, (void**)&second);
     ok(hres == S_OK, "Could not get ITestSecondDisp iface: %08lx\n", hres);
-    todo_wine
+    /* todo_wine */
     ok(external_connections == 2, "external_connections = %d\n", external_connections);
 
     ITestSecondDisp_Release(second);
-    todo_wine
+    /* todo_wine */
     ok(external_connections == 2, "external_connections = %d\n", external_connections);
 
     expect_last_release_closes = TRUE;

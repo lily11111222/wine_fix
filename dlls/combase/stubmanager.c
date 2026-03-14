@@ -72,6 +72,7 @@ struct ifstub * stub_manager_new_ifstub(struct stub_manager *m, IRpcStubBuffer *
     void *dest_context_data, MSHLFLAGS flags)
 {
     struct ifstub *stub;
+    BOOL add_extra_connection = FALSE;
     HRESULT hr;
 
     TRACE("oid=%s, stubbuffer=%p, iid=%s, dest_context=%lx\n", wine_dbgstr_longlong(m->oid), sb,
@@ -124,7 +125,15 @@ struct ifstub * stub_manager_new_ifstub(struct stub_manager *m, IRpcStubBuffer *
     list_add_head(&m->ifstubs, &stub->entry);
     /* every normal marshal is counted so we don't allow more than we should */
     if (flags & MSHLFLAGS_NORMAL) m->norm_refs++;
+    if (m->extern_conn && m->extrefs && !IsEqualIID(iid, &IID_IUnknown))
+    {
+        m->extra_conn_refs++;
+        add_extra_connection = TRUE;
+    }
     LeaveCriticalSection(&m->lock);
+
+    if (add_extra_connection)
+        IExternalConnection_AddConnection(m->extern_conn, EXTCONN_STRONG, 0);
 
     TRACE("ifstub %p created with ipid %s\n", stub, debugstr_guid(&stub->ipid));
 
@@ -451,6 +460,7 @@ ULONG stub_manager_ext_addref(struct stub_manager *m, ULONG refs, BOOL tableweak
 ULONG stub_manager_ext_release(struct stub_manager *m, ULONG refs, BOOL tableweak, BOOL last_unlock_releases)
 {
     BOOL last_extern_ref;
+    ULONG extra_releases = 0;
     ULONG rc;
 
     EnterCriticalSection(&m->lock);
@@ -465,12 +475,19 @@ ULONG stub_manager_ext_release(struct stub_manager *m, ULONG refs, BOOL tablewea
         rc += m->weakrefs;
 
     last_extern_ref = refs && !m->extrefs;
+    if (last_extern_ref)
+    {
+        extra_releases = m->extra_conn_refs;
+        m->extra_conn_refs = 0;
+    }
 
     LeaveCriticalSection(&m->lock);
 
     TRACE("removed %lu refs from %p (oid %s), rc is now %lu\n", refs, m, wine_dbgstr_longlong(m->oid), rc);
 
     if (last_extern_ref && m->extern_conn)
+        IExternalConnection_ReleaseConnection(m->extern_conn, EXTCONN_STRONG, 0, last_unlock_releases);
+    while (last_extern_ref && m->extern_conn && extra_releases--)
         IExternalConnection_ReleaseConnection(m->extern_conn, EXTCONN_STRONG, 0, last_unlock_releases);
 
     if (rc == 0)

@@ -7525,6 +7525,12 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
                             V_VT(arg) = VT_VARIANT | VT_BYREF;
                             V_VARIANTREF(arg) = &missing_arg[i];
                         }
+                        else if (rgvt[i] == VT_I4)
+                        {
+                            /* Native passes 0 for omitted optional INT in propput. */
+                            V_VT(arg) = VT_I4;
+                            V_I4(arg) = 0;
+                        }
                         else
                         {
                             V_VT(arg) = VT_ERROR;

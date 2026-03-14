@@ -225,6 +225,7 @@ struct stub_manager
     struct apartment *apt;        /* owning apt (RO) */
 
     ULONG             extrefs;    /* number of 'external' references (CS lock) */
+    ULONG             extra_conn_refs; /* extra strong ext connections for additional ifstubs (CS lock) */
     ULONG             refs;       /* internal reference count (CS apt->cs) */
     ULONG             weakrefs;   /* number of weak references (CS lock) */
     OID               oid;        /* apartment-scoped unique identifier (RO) */

@@ -1301,6 +1301,7 @@ HRESULT CALLBACK IDispatch_Invoke_Proxy(
   VARIANT VarResult;
   UINT* rgVarRefIdx = NULL;
   VARIANTARG* rgVarRef = NULL;
+  VARIANTARG* rgVarRefOrig = NULL;
   UINT u, cVarRef;
   UINT uArgErr;
   EXCEPINFO ExcepInfo;
@@ -1325,11 +1326,20 @@ HRESULT CALLBACK IDispatch_Invoke_Proxy(
   if (cVarRef) {
     rgVarRefIdx = CoTaskMemAlloc(sizeof(UINT)*cVarRef);
     rgVarRef = CoTaskMemAlloc(sizeof(VARIANTARG)*cVarRef);
+    rgVarRefOrig = CoTaskMemAlloc(sizeof(VARIANTARG)*cVarRef);
+    if (!rgVarRefIdx || !rgVarRef || !rgVarRefOrig)
+    {
+      CoTaskMemFree(rgVarRefIdx);
+      CoTaskMemFree(rgVarRef);
+      CoTaskMemFree(rgVarRefOrig);
+      return E_OUTOFMEMORY;
+    }
     /* make list of by-ref args */
     for (cVarRef=0,u=0; u<pDispParams->cArgs; u++) {
       VARIANTARG* arg = &pDispParams->rgvarg[u];
       if (V_ISBYREF(arg)) {
 	rgVarRefIdx[cVarRef] = u;
+        rgVarRefOrig[cVarRef] = *arg;
 	VariantInit(&rgVarRef[cVarRef]);
 	VariantCopy(&rgVarRef[cVarRef], arg);
 	VariantClear(arg);
@@ -1359,12 +1369,46 @@ HRESULT CALLBACK IDispatch_Invoke_Proxy(
   if (cVarRef) {
     for (u=0; u<cVarRef; u++) {
       unsigned i = rgVarRefIdx[u];
-      VariantCopy(&pDispParams->rgvarg[i],
-		  &rgVarRef[u]);
+      if ((V_VT(&rgVarRefOrig[u]) == (VT_UNKNOWN | VT_BYREF) ||
+           V_VT(&rgVarRefOrig[u]) == (VT_DISPATCH | VT_BYREF)) &&
+          V_UNKNOWNREF(&rgVarRefOrig[u]))
+      {
+          IUnknown **dst = V_UNKNOWNREF(&rgVarRefOrig[u]);
+          IUnknown *src = NULL, *old = *dst;
+
+          switch (V_VT(&rgVarRef[u]))
+          {
+          case VT_UNKNOWN:
+          case VT_DISPATCH:
+              src = V_UNKNOWN(&rgVarRef[u]);
+              V_UNKNOWN(&rgVarRef[u]) = NULL;
+              break;
+          case VT_UNKNOWN | VT_BYREF:
+          case VT_DISPATCH | VT_BYREF:
+              if (V_UNKNOWNREF(&rgVarRef[u])) src = *V_UNKNOWNREF(&rgVarRef[u]);
+              if (src) IUnknown_AddRef(src);
+              break;
+          case VT_EMPTY:
+          case VT_NULL:
+              src = NULL;
+              break;
+          default:
+              VariantCopy(&pDispParams->rgvarg[i], &rgVarRef[u]);
+              VariantClear(&rgVarRef[u]);
+              continue;
+          }
+
+          if (old) IUnknown_Release(old);
+          *dst = src;
+          pDispParams->rgvarg[i] = rgVarRefOrig[u];
+      }
+      else
+          VariantCopy(&pDispParams->rgvarg[i], &rgVarRef[u]);
       VariantClear(&rgVarRef[u]);
     }
     CoTaskMemFree(rgVarRef);
     CoTaskMemFree(rgVarRefIdx);
+    CoTaskMemFree(rgVarRefOrig);
   }
 
   if(pExcepInfo == &ExcepInfo)
@@ -1439,7 +1483,19 @@ HRESULT __RPC_STUB IDispatch_Invoke_Stub(
     /* copy ref args from arg array */
     for (u=0; u<cVarRef; u++) {
       unsigned i = rgVarRefIdx[u];
-      VariantCopy(&rgVarRef[u], &arg[i]);
+      if (V_VT(&arg[i]) == (VT_UNKNOWN | VT_BYREF) || V_VT(&arg[i]) == (VT_DISPATCH | VT_BYREF))
+      {
+          VariantClear(&rgVarRef[u]);
+          if (V_UNKNOWNREF(&arg[i]) && *V_UNKNOWNREF(&arg[i]))
+          {
+              V_VT(&rgVarRef[u]) = V_VT(&arg[i]) & ~VT_BYREF;
+              V_UNKNOWN(&rgVarRef[u]) = *V_UNKNOWNREF(&arg[i]);
+          }
+          else
+              V_VT(&rgVarRef[u]) = VT_EMPTY;
+      }
+      else
+          VariantCopy(&rgVarRef[u], &arg[i]);
     }
   }
 
