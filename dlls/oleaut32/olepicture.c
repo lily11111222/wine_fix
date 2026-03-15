@@ -192,6 +192,47 @@ static inline int get_dib_stride(int width, int bpp)
     return ((width * bpp + 31) >> 3) & ~3;
 }
 
+static inline unsigned int read_u16(const BYTE *ptr)
+{
+    return ptr[0] | (ptr[1] << 8);
+}
+
+static inline unsigned int read_u32(const BYTE *ptr)
+{
+    return ptr[0] | (ptr[1] << 8) | (ptr[2] << 16) | (ptr[3] << 24);
+}
+
+static void repack_indexed_8_to_n(const BYTE *src, UINT src_stride, BYTE *dst, UINT dst_stride,
+                                  UINT width, UINT height, UINT bpp)
+{
+    UINT x, y;
+
+    for (y = 0; y < height; ++y)
+    {
+        const BYTE *src_row = src + y * src_stride;
+        BYTE *dst_row = dst + y * dst_stride;
+
+        memset(dst_row, 0, dst_stride);
+        if (bpp == 4)
+        {
+            for (x = 0; x < width; ++x)
+            {
+                BYTE val = src_row[x] & 0x0f;
+                if (x & 1) dst_row[x >> 1] |= val;
+                else dst_row[x >> 1] |= val << 4;
+            }
+        }
+        else if (bpp == 1)
+        {
+            for (x = 0; x < width; ++x)
+            {
+                BYTE bit = src_row[x] ? 1 : 0;
+                dst_row[x >> 3] |= bit << (7 - (x & 7));
+            }
+        }
+    }
+}
+
 /*
  * Predeclare VTables.  They get initialized at the end.
  */
@@ -1012,14 +1053,19 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
     BYTE *bits, *mask = NULL;
     WICRect rc;
     WICPixelFormatGUID guid;
+    WICPixelFormatGUID original_guid;
     IWICBitmapSource *real_source;
     IWICPalette *palette;
-    UINT x, y, i;
+    UINT x, y, i, source_colors = 0;
     COLORREF white = RGB(255, 255, 255), black = RGB(0, 0, 0);
     BOOL has_alpha=FALSE, indexed=FALSE;
+    BOOL adjusted_indexed_format = FALSE;
+    UINT original_bpp = 0;
+    BOOL repack_from_8 = FALSE;
 
     hr = IWICBitmapSource_GetPixelFormat(src, &guid);
     if (FAILED(hr)) return hr;
+    original_guid = guid;
 
     for (i = 0; i < ARRAY_SIZE(wicformats); i++)
     {
@@ -1027,7 +1073,52 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
         {
             bih.biBitCount = wicformats[i].bpp;
             indexed = wicformats[i].indexed;
+            original_bpp = bih.biBitCount;
             break;
+        }
+    }
+
+    if (indexed)
+    {
+        UINT target_bpp = bih.biBitCount;
+
+        hr = IWICImagingFactory_CreatePalette(factory, &palette);
+        if (SUCCEEDED(hr))
+        {
+            hr = IWICBitmapSource_CopyPalette(src, palette);
+            if (SUCCEEDED(hr))
+                hr = IWICPalette_GetColorCount(palette, &source_colors);
+            IWICPalette_Release(palette);
+        }
+
+        if (SUCCEEDED(hr))
+        {
+            if (source_colors <= 2) target_bpp = 1;
+            else if (source_colors <= 16) target_bpp = 4;
+            else target_bpp = 8;
+
+            /* Native keeps palettized BMPs loaded from 8bpp data at least 4bpp. */
+            if (This->loadtime_format == BITMAP_FORMAT_BMP && bih.biBitCount == 8 && target_bpp < 4)
+                target_bpp = 4;
+
+            if (target_bpp != bih.biBitCount)
+            {
+                adjusted_indexed_format = TRUE;
+                bih.biBitCount = target_bpp;
+                if (target_bpp < 8)
+                {
+                    guid = GUID_WICPixelFormat8bppIndexed;
+                    repack_from_8 = TRUE;
+                }
+                else
+                {
+                    guid = GUID_WICPixelFormat8bppIndexed;
+                }
+            }
+        }
+        else
+        {
+            source_colors = 0;
         }
     }
 
@@ -1037,7 +1128,42 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
         bih.biBitCount = 32;
     }
 
+    if (This->loadtime_format == BITMAP_FORMAT_BMP && bih.biBitCount == 32 && This->data && This->datalen >= 54)
+    {
+        const BYTE *bmp = This->data;
+        unsigned int bmp_bpp, bmp_compression, bmp_colors;
+
+        if (read_u16(bmp) == BITMAP_FORMAT_BMP)
+        {
+            bmp_bpp = read_u16(bmp + 28);
+            bmp_compression = read_u32(bmp + 30);
+            bmp_colors = read_u32(bmp + 46);
+
+            if (bmp_bpp <= 8)
+            {
+                indexed = TRUE;
+                bih.biBitCount = bmp_bpp;
+                source_colors = bmp_colors ? bmp_colors : (1u << bmp_bpp);
+                if (source_colors > 256) source_colors = 256;
+
+                if (bmp_compression == BI_RLE8 && bih.biBitCount == 8)
+                    bih.biBitCount = 4;
+
+                guid = GUID_WICPixelFormat8bppIndexed;
+                adjusted_indexed_format = TRUE;
+                repack_from_8 = (bih.biBitCount < 8);
+            }
+        }
+    }
+
     hr = WICConvertBitmapSource(&guid, src, &real_source);
+    if (FAILED(hr) && adjusted_indexed_format)
+    {
+        guid = original_guid;
+        bih.biBitCount = original_bpp;
+        source_colors = 0;
+        hr = WICConvertBitmapSource(&guid, src, &real_source);
+    }
     if (FAILED(hr)) return hr;
 
     hr = IWICBitmapSource_GetSize(real_source, &width, &height);
@@ -1051,8 +1177,8 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
     bih.biSizeImage = 0;
     bih.biXPelsPerMeter = 4085; /* olepicture ignores the stored resolution */
     bih.biYPelsPerMeter = 4085;
-    bih.biClrUsed = 0;
-    bih.biClrImportant = 0;
+    bih.biClrUsed = (indexed && source_colors) ? source_colors : 0;
+    bih.biClrImportant = bih.biClrUsed;
 
     stride = get_dib_stride(width, bih.biBitCount);
     buffersize = stride * height;
@@ -1066,7 +1192,7 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
 
     if (indexed)
     {
-        UINT palette_size = 1 << bih.biBitCount, source_colors;
+        UINT palette_size = 1 << bih.biBitCount;
 
         info = dyn_info = malloc(FIELD_OFFSET(BITMAPINFO, bmiColors[palette_size]));
         if (!info)
@@ -1094,6 +1220,9 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
 
         if (source_colors < palette_size)
             memset(&info->bmiColors[source_colors], 0, sizeof(RGBQUAD) * (palette_size - source_colors));
+
+        info->bmiHeader.biClrUsed = palette_size;
+        info->bmiHeader.biClrImportant = palette_size;
     }
     else
         info = (BITMAPINFO*)&bih;
@@ -1109,7 +1238,26 @@ static HRESULT OLEPictureImpl_LoadWICSource(OLEPictureImpl *This, IWICImagingFac
     rc.Y = 0;
     rc.Width = width;
     rc.Height = height;
-    hr = IWICBitmapSource_CopyPixels(real_source, &rc, stride, buffersize, bits);
+    if (repack_from_8)
+    {
+        UINT src_stride = get_dib_stride(width, 8);
+        UINT src_size = src_stride * height;
+        BYTE *tmp = malloc(src_size);
+
+        if (!tmp)
+        {
+            DeleteObject(This->desc.bmp.hbitmap);
+            hr = E_OUTOFMEMORY;
+            goto end;
+        }
+
+        hr = IWICBitmapSource_CopyPixels(real_source, &rc, src_stride, src_size, tmp);
+        if (SUCCEEDED(hr))
+            repack_indexed_8_to_n(tmp, src_stride, bits, stride, width, height, bih.biBitCount);
+        free(tmp);
+    }
+    else
+        hr = IWICBitmapSource_CopyPixels(real_source, &rc, stride, buffersize, bits);
     if (FAILED(hr))
     {
         DeleteObject(This->desc.bmp.hbitmap);
@@ -1713,6 +1861,15 @@ static BOOL serializeIcon(HICON hIcon, void ** ppBuffer, unsigned int * pLength)
 		hDC = GetDC(0);
 		pInfoBitmap->bmiHeader.biSize = sizeof(pInfoBitmap->bmiHeader);
 		GetDIBits(hDC, infoIcon.hbmColor, 0, 0, NULL, pInfoBitmap, DIB_RGB_COLORS);
+                if (pInfoBitmap->bmiHeader.biBitCount > 8)
+                {
+                    pInfoBitmap->bmiHeader.biBitCount = 4;
+                    pInfoBitmap->bmiHeader.biCompression = BI_RGB;
+                    pInfoBitmap->bmiHeader.biClrUsed = 16;
+                    pInfoBitmap->bmiHeader.biClrImportant = 16;
+                    pInfoBitmap->bmiHeader.biSizeImage = 0;
+                    GetDIBits(hDC, infoIcon.hbmColor, 0, 0, NULL, pInfoBitmap, DIB_RGB_COLORS);
+                }
 		if (1) {
 			/* Auxiliary pointers */
 			CURSORICONFILEDIR * pIconDir;
@@ -1967,6 +2124,7 @@ static HRESULT WINAPI OLEPictureImpl_GetSizeMax(IPersistStream *iface, ULARGE_IN
     HRESULT hr = E_NOTIMPL;
     OLEPictureImpl *This = impl_from_IPersistStream(iface);
     unsigned int datasize = This->datalen;
+    void *data;
 
     FIXME("(%p,%p), partial stub!\n", This, size);
 
@@ -1978,7 +2136,15 @@ static HRESULT WINAPI OLEPictureImpl_GetSizeMax(IPersistStream *iface, ULARGE_IN
         hr = S_OK;
         break;
     case PICTYPE_ICON:
-        FIXME("(%p), PICTYPE_ICON not implemented!\n",This);
+        if (This->bIsDirty || !This->data)
+        {
+            if (!serializeIcon(This->desc.icon.hicon, &data, &datasize))
+                break;
+            HeapFree(GetProcessHeap(), 0, This->data);
+            This->data = data;
+            This->datalen = datasize;
+        }
+        hr = S_OK;
         break;
     case PICTYPE_BITMAP:
         if (This->bIsDirty || !This->data) {
