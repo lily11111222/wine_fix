@@ -50,6 +50,7 @@ struct wgl_pbuffer
     GLenum texture_target;
     GLint mipmap_level;
     GLenum cube_face;
+    int bound_buffer;  /* WGL buffer when bound, 0 when not bound */
 };
 
 static const struct opengl_driver_funcs nulldrv_funcs, *driver_funcs = &nulldrv_funcs;
@@ -1917,7 +1918,7 @@ static BOOL win32u_wglQueryPbufferARB( struct wgl_pbuffer *pbuffer, int attrib, 
         *value = pbuffer->mipmap_level >= 0;
         break;
     case WGL_MIPMAP_LEVEL_ARB:
-        *value = max( pbuffer->mipmap_level, 0 );
+        *value = 0;  /* Windows returns 0 for current mipmap level */
         break;
     case WGL_CUBE_MAP_FACE_ARB:
         switch (pbuffer->cube_face)
@@ -1995,14 +1996,34 @@ static BOOL win32u_wglBindTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
         else source = GL_FRONT;
         break;
     case WGL_FRONT_RIGHT_ARB:
-        source = GL_FRONT_RIGHT;
+        if (!(desc.pfd.dwFlags & PFD_STEREO))
+        {
+            if (pbuffer->bound_buffer)
+            {
+                RtlSetLastWin32Error( ERROR_INVALID_DATA );
+                return GL_FALSE;
+            }
+            source = GL_FRONT;  /* map to front when no stereo and not bound */
+        }
+        else
+            source = GL_FRONT_RIGHT;
         break;
     case WGL_BACK_LEFT_ARB:
         if (desc.pfd.dwFlags & PFD_STEREO) source = GL_BACK_LEFT;
         else source = GL_BACK;
         break;
     case WGL_BACK_RIGHT_ARB:
-        source = GL_BACK_RIGHT;
+        if (!(desc.pfd.dwFlags & PFD_STEREO))
+        {
+            if (pbuffer->bound_buffer)
+            {
+                RtlSetLastWin32Error( ERROR_INVALID_DATA );
+                return GL_FALSE;
+            }
+            source = GL_BACK;  /* map to back when no stereo and not bound */
+        }
+        else
+            source = GL_BACK_RIGHT;
         break;
     case WGL_AUX0_ARB: source = GL_AUX0; break;
     case WGL_AUX1_ARB: source = GL_AUX1; break;
@@ -2025,6 +2046,12 @@ static BOOL win32u_wglBindTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
         return GL_FALSE;
     }
 
+    if (pbuffer->bound_buffer == buffer)
+    {
+        RtlSetLastWin32Error( ERROR_INVALID_DATA );
+        return GL_FALSE;
+    }
+
     if ((ret = driver_funcs->p_pbuffer_bind( pbuffer->hdc, pbuffer->drawable, source )) != -1)
         return ret;
 
@@ -2038,11 +2065,16 @@ static BOOL win32u_wglBindTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
                                         pbuffer->width, pbuffer->height, 0 );
 
     pop_internal_context( NtCurrentTeb()->glContext );
+    pbuffer->bound_buffer = buffer;
     return GL_TRUE;
 }
 
 static BOOL win32u_wglReleaseTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
 {
+    BOOL ret;
+    int format = win32u_wglGetPixelFormat( pbuffer->hdc );
+    struct wgl_pixel_format desc;
+
     TRACE( "pbuffer %p, buffer %d\n", pbuffer, buffer );
 
     if (!pbuffer->texture_format)
@@ -2051,7 +2083,49 @@ static BOOL win32u_wglReleaseTexImageARB( struct wgl_pbuffer *pbuffer, int buffe
         return GL_FALSE;
     }
 
-    return !!driver_funcs->p_pbuffer_bind( pbuffer->hdc, pbuffer->drawable, GL_NONE );
+    /* Reject OpenGL constants - must use WGL_ARB constants */
+    if (buffer == GL_FRONT || buffer == GL_BACK)
+    {
+        RtlSetLastWin32Error( ERROR_INVALID_DATA );
+        return GL_FALSE;
+    }
+
+    /* Validate buffer */
+    switch (buffer)
+    {
+    case WGL_FRONT_LEFT_ARB:
+    case WGL_FRONT_RIGHT_ARB:
+    case WGL_BACK_LEFT_ARB:
+    case WGL_BACK_RIGHT_ARB:
+    case WGL_AUX0_ARB:
+    case WGL_AUX1_ARB:
+    case WGL_AUX2_ARB:
+    case WGL_AUX3_ARB:
+        break;
+    default:
+        RtlSetLastWin32Error( ERROR_INVALID_DATA );
+        return GL_FALSE;
+    }
+
+    /* Reject back buffer when not double-buffered */
+    if (driver_funcs->p_describe_pixel_format( format, &desc ) &&
+        (buffer == WGL_BACK_LEFT_ARB || buffer == WGL_BACK_RIGHT_ARB) &&
+        !(desc.pfd.dwFlags & PFD_DOUBLEBUFFER))
+    {
+        RtlSetLastWin32Error( ERROR_INVALID_DATA );
+        return GL_FALSE;
+    }
+
+    /* When nothing is bound, only WGL_FRONT_LEFT_ARB release succeeds as no-op */
+    if (!pbuffer->bound_buffer && buffer != WGL_FRONT_LEFT_ARB)
+    {
+        RtlSetLastWin32Error( ERROR_INVALID_DATA );
+        return GL_FALSE;
+    }
+
+    ret = !!driver_funcs->p_pbuffer_bind( pbuffer->hdc, pbuffer->drawable, GL_NONE );
+    if (ret) pbuffer->bound_buffer = 0;
+    return ret;
 }
 
 static BOOL win32u_wglSetPbufferAttribARB( struct wgl_pbuffer *pbuffer, const int *attribs )

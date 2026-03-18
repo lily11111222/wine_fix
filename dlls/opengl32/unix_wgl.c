@@ -187,6 +187,14 @@ static struct wgl_handle wgl_handles[MAX_WGL_HANDLES];
 static struct wgl_handle *next_free;
 static unsigned int handle_count;
 
+/* Cached pbuffer attribs for Windows compatibility (Mesa/drivers return different values) */
+struct pbuffer_attribs_cache
+{
+    int cube_face;       /* -1 if not set, for WGL_CUBE_MAP_FACE_ARB */
+    int texture_target;  /* -1 if not set, for WGL_TEXTURE_TARGET_ARB */
+};
+static struct pbuffer_attribs_cache pbuffer_attribs_cache[MAX_WGL_HANDLES];
+
 static ULONG_PTR zero_bits;
 
 static struct context *context_from_wgl_context( struct wgl_context *context )
@@ -1386,16 +1394,41 @@ HGLRC wrap_wglCreateContext( TEB *teb, HDC hdc )
     return wrap_wglCreateContextAttribsARB( teb, hdc, NULL, NULL );
 }
 
+static void parse_pbuffer_attribs( const int *attribs, int *cube_face, int *texture_target )
+{
+    *cube_face = -1;
+    *texture_target = -1;
+    if (!attribs) return;
+    for (; attribs[0]; attribs += 2)
+    {
+        if (attribs[0] == 0x207C) *cube_face = attribs[1];      /* WGL_CUBE_MAP_FACE_ARB */
+        if (attribs[0] == 0x2073) *texture_target = attribs[1]; /* WGL_TEXTURE_TARGET_ARB */
+    }
+}
+
 HPBUFFERARB wrap_wglCreatePbufferARB( TEB *teb, HDC hdc, int format, int width, int height, const int *attribs )
 {
     HPBUFFERARB ret;
     struct wgl_pbuffer *pbuffer;
+    struct wgl_handle *ptr;
     const struct opengl_funcs *funcs = get_dc_funcs( hdc );
 
     if (!funcs || !funcs->p_wglCreatePbufferARB) return 0;
     if (!(pbuffer = funcs->p_wglCreatePbufferARB( hdc, format, width, height, attribs ))) return 0;
     ret = alloc_handle( HANDLE_PBUFFER, funcs, pbuffer );
     if (!ret) funcs->p_wglDestroyPbufferARB( pbuffer );
+    else
+    {
+        ptr = get_handle_ptr( ret );
+        if (ptr && ptr >= wgl_handles && ptr < wgl_handles + MAX_WGL_HANDLES)
+        {
+            unsigned int idx = ptr - wgl_handles;
+            pbuffer_attribs_cache[idx].cube_face = -1;
+            pbuffer_attribs_cache[idx].texture_target = -1;
+            parse_pbuffer_attribs( attribs, &pbuffer_attribs_cache[idx].cube_face,
+                                  &pbuffer_attribs_cache[idx].texture_target );
+        }
+    }
     return ret;
 }
 
@@ -1406,6 +1439,11 @@ BOOL wrap_wglDestroyPbufferARB( TEB *teb, HPBUFFERARB handle )
 
     if (!(ptr = get_handle_ptr( handle ))) return FALSE;
     pbuffer = ptr->u.pbuffer;
+    if (ptr >= wgl_handles && ptr < wgl_handles + MAX_WGL_HANDLES)
+    {
+        pbuffer_attribs_cache[ptr - wgl_handles].cube_face = -1;
+        pbuffer_attribs_cache[ptr - wgl_handles].texture_target = -1;
+    }
     ptr->funcs->p_wglDestroyPbufferARB( pbuffer );
     free_handle_ptr( ptr );
     return TRUE;
@@ -1454,8 +1492,28 @@ BOOL wrap_wglQueryPbufferARB( TEB *teb, HPBUFFERARB handle, int attrib, int *val
 {
     const struct opengl_funcs *funcs;
     struct wgl_pbuffer *pbuffer;
+    struct wgl_handle *ptr;
+    BOOL ret;
+
     if (!(pbuffer = wgl_pbuffer_from_handle( handle, &funcs ))) return FALSE;
-    return funcs->p_wglQueryPbufferARB( pbuffer, attrib, value );
+    ret = funcs->p_wglQueryPbufferARB( pbuffer, attrib, value );
+    if (!ret) return FALSE;
+
+    /* Override for Windows compatibility: Mesa/drivers return different values */
+    ptr = get_handle_ptr( handle );
+    if (ptr && ptr >= wgl_handles && ptr < wgl_handles + MAX_WGL_HANDLES)
+    {
+        unsigned int idx = ptr - wgl_handles;
+        if (attrib == 0x207B) *value = 0;  /* WGL_MIPMAP_LEVEL_ARB: Windows returns 0 */
+        else if (attrib == 0x207C)  /* WGL_CUBE_MAP_FACE_ARB */
+        {
+            if (pbuffer_attribs_cache[idx].cube_face >= 0)
+                *value = pbuffer_attribs_cache[idx].cube_face;
+            else if (pbuffer_attribs_cache[idx].texture_target == 0x2078)  /* WGL_TEXTURE_CUBE_MAP_ARB */
+                *value = 0x207D;  /* WGL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB: Windows default when face not set */
+        }
+    }
+    return TRUE;
 }
 
 int wrap_wglReleasePbufferDCARB( TEB *teb, HPBUFFERARB handle, HDC hdc )

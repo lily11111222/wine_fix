@@ -600,11 +600,11 @@ static void test_pbuffers( HDC old_hdc )
     value = 0xdeadbeef;
     ret = pwglQueryPbufferARB( pbuffer, WGL_MIPMAP_LEVEL_ARB, &value );
     ok( ret == 1, "got %u\n", ret );
-    todo_wine ok( value == 0 || broken(value > 0) /* AMD */, "got %u\n", value );
+    /* todo_wine */ ok( value == 0 || broken(value > 0) /* AMD */, "got %u\n", value );
     value = 0xdeadbeef;
     ret = pwglQueryPbufferARB( pbuffer, WGL_CUBE_MAP_FACE_ARB, &value );
     ok( ret == 1, "got %u\n", ret );
-    todo_wine ok( value == WGL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB || broken(value == 0xdeadbeef) /* AMD */, "got %#x\n", value );
+    /* todo_wine */ ok( value == WGL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB || broken(value == 0xdeadbeef) /* AMD */, "got %#x\n", value );
 
     pwglDestroyPbufferARB( pbuffer );
 
@@ -646,8 +646,8 @@ static void test_pbuffers( HDC old_hdc )
     /* test some invalid params */
     SetLastError( 0xdeadbeef );
     ret = pwglReleaseTexImageARB( pbuffer, GL_FRONT );
-    todo_wine ok( ret == 0, "got %u\n", ret );
-    todo_wine ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(GetLastError() == 0xdeadbeef) /* AMD */, "got %#lx\n", GetLastError() );
+    /* todo_wine */ ok( ret == 0, "got %u\n", ret );
+    /* todo_wine */ ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(GetLastError() == 0xdeadbeef) /* AMD */, "got %#lx\n", GetLastError() );
     SetLastError( 0xdeadbeef );
     ret = pwglBindTexImageARB( pbuffer, GL_BACK );
     ok( ret == 0, "got %u\n", ret );
@@ -656,8 +656,8 @@ static void test_pbuffers( HDC old_hdc )
     /* test invalid calls */
     SetLastError( 0xdeadbeef );
     ret = pwglReleaseTexImageARB( pbuffer, WGL_BACK_LEFT_ARB );
-    todo_wine ok( ret == 0, "got %u\n", ret );
-    todo_wine ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(!GetLastError()) /* AMD */, "got %#lx\n", GetLastError() );
+    /* todo_wine */ ok( ret == 0, "got %u\n", ret );
+    /* todo_wine */ ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(!GetLastError()) /* AMD */, "got %#lx\n", GetLastError() );
 
     value = 0xdeadbeef;
     glGetIntegerv( GL_TEXTURE_BINDING_2D, &value );
@@ -692,12 +692,12 @@ static void test_pbuffers( HDC old_hdc )
 
     SetLastError( 0xdeadbeef );
     ret = pwglBindTexImageARB( pbuffer, WGL_FRONT_LEFT_ARB );
-    todo_wine ok( ret == 0, "got %u\n", ret );
-    todo_wine ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(!GetLastError()) /* AMD */, "got %#lx\n", GetLastError() );
+    /* todo_wine */ ok( ret == 0, "got %u\n", ret );
+    /* todo_wine */ ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(!GetLastError()) /* AMD */, "got %#lx\n", GetLastError() );
     SetLastError( 0xdeadbeef );
     ret = pwglBindTexImageARB( pbuffer, WGL_FRONT_RIGHT_ARB );
-    todo_wine ok( ret == 0, "got %u\n", ret );
-    todo_wine ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(!GetLastError()) /* AMD */, "got %#lx\n", GetLastError() );
+    /* todo_wine */ ok( ret == 0, "got %u\n", ret );
+    /* todo_wine */ ok( (GetLastError() & 0xffff) == ERROR_INVALID_DATA || broken(!GetLastError()) /* AMD */, "got %#lx\n", GetLastError() );
 
     pwglReleaseTexImageARB( pbuffer, WGL_FRONT_LEFT_ARB );
     ret = pwglReleaseTexImageARB( pbuffer, WGL_FRONT_LEFT_ARB );

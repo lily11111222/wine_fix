@@ -2362,6 +2362,7 @@ static void test_marshal_iface(IWidget *widget, IDispatch *disp)
     V_VT(&arg[0]) = VT_UNKNOWN|VT_BYREF;  V_UNKNOWNREF(&arg[0]) = &proxy_unk2;
     hr = IDispatch_Invoke(disp, DISPID_TM_IFACE_OUT, &IID_NULL, LOCALE_NEUTRAL,
             DISPATCH_METHOD, &dispparams, NULL, NULL, NULL);
+            /*todo_wine*/ 
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
 if (hr == S_OK) {
     hr = IUnknown_QueryInterface(proxy_unk2, &IID_ISomethingFromDispatch, (void **)&proxy_sfd);
