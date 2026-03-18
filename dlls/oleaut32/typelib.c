@@ -1211,6 +1211,7 @@ typedef struct tagITypeInfoImpl
     LONG ref;
     BOOL not_attached_to_typelib;
     BOOL needs_layout;
+    struct tagITypeInfoImpl *dual_partner;
 
     TLBGuid *guid;
     TYPEATTR typeattr;
@@ -1290,6 +1291,13 @@ static inline int TLB_str_memcmp(void *left, const TLBString *str, DWORD len)
     if(!str)
         return 1;
     return memcmp(left, str->str, len);
+}
+
+static inline int TLB_str_memcmpi(const WCHAR *left, const TLBString *str)
+{
+    if (!str)
+        return 1;
+    return lstrcmpiW(left, str->str);
 }
 
 static inline const GUID *TLB_get_guidref(const TLBGuid *guid)
@@ -5150,20 +5158,19 @@ static HRESULT WINAPI ITypeLib2_fnFindName(
     ITypeLibImpl *This = impl_from_ITypeLib2(iface);
     int tic;
     UINT count = 0;
-    UINT len;
 
     TRACE("%p, %s %#lx, %p, %p, %p.\n", iface, debugstr_w(name), hash, ppTInfo, memid, found);
 
     if ((!name && hash == 0) || !ppTInfo || !memid || !found)
         return E_INVALIDARG;
 
-    len = (lstrlenW(name) + 1)*sizeof(WCHAR);
     for(tic = 0; count < *found && tic < This->TypeInfoCount; ++tic) {
         ITypeInfoImpl *pTInfo = This->typeinfos[tic];
         TLBVarDesc *var;
         UINT fdc;
 
-        if(!TLB_str_memcmp(name, pTInfo->Name, len)) {
+        if(!TLB_str_memcmpi(name, pTInfo->Name)) {
+            lstrcpyW(name, TLB_get_bstr(pTInfo->Name));
             memid[count] = MEMBERID_NIL;
             goto ITypeLib2_fnFindName_exit;
         }
@@ -5171,7 +5178,8 @@ static HRESULT WINAPI ITypeLib2_fnFindName(
         for(fdc = 0; fdc < pTInfo->typeattr.cFuncs; ++fdc) {
             TLBFuncDesc *func = &pTInfo->funcdescs[fdc];
 
-            if(!TLB_str_memcmp(name, func->Name, len)) {
+            if(!TLB_str_memcmpi(name, func->Name)) {
+                lstrcpyW(name, TLB_get_bstr(func->Name));
                 memid[count] = func->funcdesc.memid;
                 goto ITypeLib2_fnFindName_exit;
             }
@@ -5179,6 +5187,7 @@ static HRESULT WINAPI ITypeLib2_fnFindName(
 
         var = TLB_get_vardesc_by_name(pTInfo, name);
         if (var) {
+            lstrcpyW(name, TLB_get_bstr(var->Name));
             memid[count] = var->vardesc.memid;
             goto ITypeLib2_fnFindName_exit;
         }
@@ -5569,8 +5578,8 @@ static HRESULT WINAPI ITypeLibComp_fnBindType(
 
     *ppTInfo = (ITypeInfo *)&info->ITypeInfo2_iface;
     ITypeInfo_AddRef(*ppTInfo);
-    *ppTComp = &info->ITypeComp_iface;
-    ITypeComp_AddRef(*ppTComp);
+    /* Native leaves the output typecomp NULL for typelibrary BindType(). */
+    *ppTComp = NULL;
 
     return S_OK;
 }
@@ -5648,6 +5657,8 @@ static ULONG WINAPI ITypeInfo_fnAddRef( ITypeInfo2 *iface)
 
     if (ref == 1 /* incremented from 0 */)
         ITypeLib2_AddRef(&This->pTypeLib->ITypeLib2_iface);
+    if (This->not_attached_to_typelib && This->dual_partner)
+        ITypeInfo2_AddRef(&This->dual_partner->ITypeInfo2_iface);
 
     return ref;
 }
@@ -5713,9 +5724,15 @@ static ULONG WINAPI ITypeInfo_fnRelease(ITypeInfo2 *iface)
 
     TRACE("%p, refcount %lu.\n", iface, ref);
 
+    if (This->not_attached_to_typelib && This->dual_partner)
+        ITypeInfo2_Release(&This->dual_partner->ITypeInfo2_iface);
+
     if (!ref)
     {
         BOOL not_attached_to_typelib = This->not_attached_to_typelib;
+        ITypeInfoImpl *dual_partner = This->dual_partner;
+        if (dual_partner && dual_partner->dual_partner == This)
+            dual_partner->dual_partner = NULL;
         ITypeLib2_Release(&This->pTypeLib->ITypeLib2_iface);
         if (not_attached_to_typelib)
             free(This);
@@ -7961,6 +7978,14 @@ static HRESULT WINAPI ITypeInfo_fnGetRefTypeInfo(
                     This->typeattr.typekind == TKIND_DISPATCH))
             return TYPE_E_ELEMENTNOTFOUND;
 
+        if (This->dual_partner)
+        {
+            *ppTInfo = (ITypeInfo *)&This->dual_partner->ITypeInfo2_iface;
+            ITypeInfo_AddRef(*ppTInfo);
+            TRACE("got cached dual interface %p\n", *ppTInfo);
+            return S_OK;
+        }
+
         /* when we meet a DUAL typeinfo, we must create the alternate
         * version of it.
         */
@@ -7981,6 +8006,8 @@ static HRESULT WINAPI ITypeInfo_fnGetRefTypeInfo(
          * refcount goes to zero, but we need to signal to the new instance to
          * not free its data structures when it is destroyed */
         pTypeInfoImpl->not_attached_to_typelib = TRUE;
+        pTypeInfoImpl->dual_partner = This;
+        This->dual_partner = pTypeInfoImpl;
         ITypeInfo_AddRef(*ppTInfo);
 
         TRACE("got dual interface %p\n", *ppTInfo);

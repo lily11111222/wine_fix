@@ -568,7 +568,7 @@ static void test_TypeComp(void)
     hr = ITypeComp_BindType(pTypeComp, wszGUID, ulHash, &pTypeInfo, &pTypeComp_tmp);
     ok_ole_success(hr, ITypeComp_BindType);
     ok(pTypeInfo != NULL, "Got NULL pTypeInfo\n");
-    todo_wine ok(pTypeComp_tmp == NULL, "Got pTypeComp_tmp %p\n", pTypeComp_tmp);
+    /* todo_wine */ ok(pTypeComp_tmp == NULL, "Got pTypeComp_tmp %p\n", pTypeComp_tmp);
     ITypeInfo_Release(pTypeInfo);
     if(pTypeComp_tmp) ITypeComp_Release(pTypeComp_tmp); /* fixme */
 
@@ -579,7 +579,7 @@ static void test_TypeComp(void)
     hr = ITypeComp_BindType(pTypeComp, wszguid, ulHash, &pTypeInfo, &pTypeComp_tmp);
     ok_ole_success(hr, ITypeComp_BindType);
     ok(pTypeInfo != NULL, "Got NULL pTypeInfo\n");
-    todo_wine ok(pTypeComp_tmp == NULL, "Got pTypeComp_tmp %p\n", pTypeComp_tmp);
+    /* todo_wine */ ok(pTypeComp_tmp == NULL, "Got pTypeComp_tmp %p\n", pTypeComp_tmp);
     ITypeInfo_Release(pTypeInfo);
     if(pTypeComp_tmp) ITypeComp_Release(pTypeComp_tmp); /* fixme */
 
@@ -3146,7 +3146,7 @@ static void test_CreateTypeLib(SYSKIND sys) {
     EXPECT_REF(dual, 2);
     hres = ITypeInfo_GetRefTypeInfo(dual, -2, &ti);
     ok(hres == S_OK, "got %08lx\n", hres);
-    todo_wine
+    /* todo_wine */
     EXPECT_REF(dual, 3);
 
     hres = ITypeInfo_GetTypeAttr(ti, &typeattr);
@@ -3167,12 +3167,12 @@ static void test_CreateTypeLib(SYSKIND sys) {
 
     hres = ITypeInfo_GetRefTypeInfo(dual, -2, &ti_2);
     ok(hres == S_OK, "Failed to get reference typeinfo, hr %#lx.\n", hres);
-todo_wine {
+/* todo_wine */ {
     ok(ti == ti_2, "Unexpected typeinfo instance.\n");
     EXPECT_REF(dual, 4);
 }
     ITypeInfo_AddRef(ti_2);
-    todo_wine
+    /* todo_wine */
     EXPECT_REF(dual, 5);
     ITypeInfo_Release(ti_2);
 
@@ -7743,7 +7743,7 @@ static void test_FindName(void)
     ti = (void*)0xdeadbeef;
     hr = ITypeLib_FindName(tl, buffW, 0, &ti, &memid, &c);
     ok(hr == S_OK, "got 0x%08lx\n", hr);
-todo_wine {
+/* todo_wine */ {
     ok(memid == MEMBERID_NIL, "got %ld\n", memid);
     ok(!lstrcmpW(buffW, wszGUID), "got %s\n", wine_dbgstr_w(buffW));
     ok(c == 1, "got %d\n", c);
