@@ -2654,6 +2654,12 @@ static void TLB_fix_typeinfo_ptr_size(ITypeInfoImpl *info)
             info->typeattr.typekind == TKIND_COCLASS){
         info->typeattr.cbSizeInstance = sizeof(void*);
         info->typeattr.cbAlignment = sizeof(void*);
+        if (info->pTypeLib->ptr_size != sizeof(void *) &&
+            info->pTypeLib->ptr_size &&
+            !(info->typeattr.cbSizeVft % info->pTypeLib->ptr_size))
+        {
+            info->typeattr.cbSizeVft = info->typeattr.cbSizeVft / info->pTypeLib->ptr_size * sizeof(void *);
+        }
     }
 }
 
@@ -5764,9 +5770,21 @@ static HRESULT WINAPI ITypeInfo_fnGetTypeAttr( ITypeInfo2 *iface,
     if (This->tdescAlias)
         TLB_CopyTypeDesc(&(*ppTypeAttr)->tdescAlias, This->tdescAlias, *ppTypeAttr + 1);
 
+    /* Native keeps IUnknown's vtable/instance size tied to typelib syskind. */
+    if ((*ppTypeAttr)->typekind == TKIND_INTERFACE && This->guid &&
+        IsEqualGUID(TLB_get_guidref(This->guid), &IID_IUnknown) &&
+        This->pTypeLib->ptr_size != sizeof(void *))
+    {
+        (*ppTypeAttr)->cbSizeInstance = This->pTypeLib->ptr_size;
+        (*ppTypeAttr)->cbSizeVft = 3 * This->pTypeLib->ptr_size;
+    }
+
     if((*ppTypeAttr)->typekind == TKIND_DISPATCH) {
         /* This should include all the inherited funcs */
-        (*ppTypeAttr)->cFuncs = (*ppTypeAttr)->cbSizeVft / This->pTypeLib->ptr_size;
+        if (This->pTypeLib->ptr_size != sizeof(void *) && !This->not_attached_to_typelib)
+            (*ppTypeAttr)->cFuncs = (*ppTypeAttr)->cbSizeVft / sizeof(void *);
+        else
+            (*ppTypeAttr)->cFuncs = (*ppTypeAttr)->cbSizeVft / This->pTypeLib->ptr_size;
         /* This is always the size of IDispatch's vtbl */
         (*ppTypeAttr)->cbSizeVft = sizeof(IDispatchVtbl);
         (*ppTypeAttr)->wTypeFlags &= ~TYPEFLAG_FOLEAUTOMATION;
@@ -8051,53 +8069,63 @@ static HRESULT WINAPI ITypeInfo_fnGetRefTypeInfo(
             TRACE("internal reference\n");
             result = ITypeInfo2_GetContainingTypeLib(iface, &pTLib, &Index);
         } else {
-            if(ref_type->pImpTLInfo->pImpTypeLib) {
+            if(ref_type->pImpTLInfo->pImpTypeLib &&
+               ref_type->pImpTLInfo->pImpTypeLib->syskind == This->pTypeLib->syskind) {
                 TRACE("typeinfo in imported typelib that is already loaded\n");
                 pTLib = (ITypeLib*)&ref_type->pImpTLInfo->pImpTypeLib->ITypeLib2_iface;
                 ITypeLib_AddRef(pTLib);
                 result = S_OK;
             } else {
-                /* Search in cached typelibs */
-                ITypeLibImpl *entry;
+                BSTR libnam = NULL;
 
-                EnterCriticalSection(&cache_section);
-                LIST_FOR_EACH_ENTRY(entry, &tlb_cache, ITypeLibImpl, entry)
+                /* Prefer loading by current syskind; if unavailable, then fall back to cache. */
+                result = query_typelib_path(TLB_get_guid_null(ref_type->pImpTLInfo->guid),
+                        ref_type->pImpTLInfo->wVersionMajor,
+                        ref_type->pImpTLInfo->wVersionMinor,
+                        This->pTypeLib->syskind,
+                        ref_type->pImpTLInfo->lcid, &libnam, TRUE);
+                if (FAILED(result) && ref_type->pImpTLInfo->name)
                 {
-                    if (entry->guid
-                        && IsEqualIID(&entry->guid->guid, TLB_get_guid_null(ref_type->pImpTLInfo->guid))
-                        && entry->ver_major == ref_type->pImpTLInfo->wVersionMajor
-                        && entry->ver_minor == ref_type->pImpTLInfo->wVersionMinor
-                        && entry->set_lcid == ref_type->pImpTLInfo->lcid)
-                    {
-                        TRACE("got cached %p\n", entry);
-                        pTLib = (ITypeLib*)&entry->ITypeLib2_iface;
-                        ITypeLib_AddRef(pTLib);
-                        result = S_OK;
-                        break;
-                    }
+                    libnam = SysAllocString(ref_type->pImpTLInfo->name);
+                    result = libnam ? S_OK : E_OUTOFMEMORY;
                 }
-                LeaveCriticalSection(&cache_section);
 
-                if (!pTLib)
+                if (SUCCEEDED(result))
                 {
-                    BSTR libnam;
-
-                    /* Search on disk */
-                    result = query_typelib_path(TLB_get_guid_null(ref_type->pImpTLInfo->guid),
-                            ref_type->pImpTLInfo->wVersionMajor,
-                            ref_type->pImpTLInfo->wVersionMinor,
-                            This->pTypeLib->syskind,
-                            ref_type->pImpTLInfo->lcid, &libnam, TRUE);
-                    if (FAILED(result))
-                        libnam = SysAllocString(ref_type->pImpTLInfo->name);
-
                     result = LoadTypeLib(libnam, &pTLib);
                     SysFreeString(libnam);
                 }
 
+                if (FAILED(result))
+                {
+                    /* Search in cached typelibs as fallback when registry/path isn't available. */
+                    ITypeLibImpl *entry;
+
+                    EnterCriticalSection(&cache_section);
+                    LIST_FOR_EACH_ENTRY(entry, &tlb_cache, ITypeLibImpl, entry)
+                    {
+                        if (entry->guid
+                            && IsEqualIID(&entry->guid->guid, TLB_get_guid_null(ref_type->pImpTLInfo->guid))
+                            && entry->ver_major == ref_type->pImpTLInfo->wVersionMajor
+                            && entry->ver_minor == ref_type->pImpTLInfo->wVersionMinor
+                            && entry->set_lcid == ref_type->pImpTLInfo->lcid)
+                        {
+                            TRACE("got cached %p\n", entry);
+                            pTLib = (ITypeLib*)&entry->ITypeLib2_iface;
+                            ITypeLib_AddRef(pTLib);
+                            result = S_OK;
+                            break;
+                        }
+                    }
+                    LeaveCriticalSection(&cache_section);
+                }
+
                 if(SUCCEEDED(result)) {
-                    ref_type->pImpTLInfo->pImpTypeLib = impl_from_ITypeLib(pTLib);
-                    ITypeLib_AddRef(pTLib);
+                    if (!ref_type->pImpTLInfo->pImpTypeLib)
+                    {
+                        ref_type->pImpTLInfo->pImpTypeLib = impl_from_ITypeLib(pTLib);
+                        ITypeLib_AddRef(pTLib);
+                    }
                 }
             }
         }
@@ -11261,6 +11289,9 @@ static HRESULT WINAPI ICreateTypeInfo2_fnLayOut(ICreateTypeInfo2 *iface)
                     return hres;
                 }
                 This->typeattr.cbSizeVft = attr->cbSizeVft;
+                if (attr->cbSizeInstance && attr->cbSizeInstance != This->pTypeLib->ptr_size &&
+                    !(attr->cbSizeVft % attr->cbSizeInstance))
+                    This->typeattr.cbSizeVft = (attr->cbSizeVft / attr->cbSizeInstance) * This->pTypeLib->ptr_size;
                 ITypeInfo_ReleaseTypeAttr(inh, attr);
 
                 do{
