@@ -1197,6 +1197,7 @@ static DWORD get_tymed_from_nonole_cf(UINT cf)
     case CF_OEMTEXT:
     case CF_UNICODETEXT:
     case CF_HDROP:
+    case CF_LOCALE:
         return TYMED_ISTREAM | TYMED_HGLOBAL;
     case CF_ENHMETAFILE:
         return TYMED_ENHMF;
@@ -1843,7 +1844,7 @@ static HRESULT set_clipboard_formats(ole_clipbrd *clipbrd, IDataObject *data)
     priv_data->unk2 = 1;
     priv_data->count = count;
     priv_data->unk3[0] = 0;
-    priv_data->unk3[1] = 0;
+    priv_data->unk3[1] = sizeof(void *) == 8 ? 1 : 0;
 
     IEnumFORMATETC_Reset(enum_fmt);
 
@@ -2231,6 +2232,7 @@ HRESULT WINAPI OleGetClipboard(IDataObject **obj)
 {
     HRESULT hr;
     ole_clipbrd *clipbrd;
+    HWND wnd;
     DWORD seq_no;
 
     TRACE("(%p)\n", obj);
@@ -2239,6 +2241,11 @@ HRESULT WINAPI OleGetClipboard(IDataObject **obj)
     *obj = NULL;
 
     if(FAILED(hr = get_ole_clipbrd(&clipbrd))) return hr;
+    if(FAILED(hr = get_clipbrd_window(clipbrd, &wnd))) return hr;
+    if (!OpenClipboard(wnd))
+        return CLIPBRD_E_CANT_OPEN;
+    if (!CloseClipboard())
+        return CLIPBRD_E_CANT_CLOSE;
 
     seq_no = GetClipboardSequenceNumber();
     EnterCriticalSection(&latest_snapshot_cs);

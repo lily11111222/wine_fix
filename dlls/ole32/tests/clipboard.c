@@ -833,7 +833,7 @@ static void test_cf_dataobject(IDataObject *data)
 
                     /* win64 sets the lsb */
                     if(sizeof(fmt_ptr->fmt.ptd) == 8)
-                        todo_wine ok(priv->res3[1] == 1, "got %08lx\n", priv->res3[1]);
+                        /* todo_wine */ ok(priv->res3[1] == 1, "got %08lx\n", priv->res3[1]);
                     else
                         ok(priv->res3[1] == 0, "got %08lx\n", priv->res3[1]);
 
@@ -1669,7 +1669,7 @@ static void test_nonole_clipboard(void)
     ok(fmt.ptd == NULL, "ptd %p\n", fmt.ptd);
     ok(fmt.dwAspect == DVASPECT_CONTENT, "aspect %lx\n", fmt.dwAspect);
     ok(fmt.lindex == -1, "lindex %ld\n", fmt.lindex);
-    todo_wine ok(fmt.tymed == (TYMED_ISTREAM | TYMED_HGLOBAL), "tymed %lx\n", fmt.tymed);
+    /* todo_wine */ ok(fmt.tymed == (TYMED_ISTREAM | TYMED_HGLOBAL), "tymed %lx\n", fmt.tymed);
 
     hr = IEnumFORMATETC_Next(enum_fmt, 1, &fmt, NULL);
     ok(hr == S_OK, "got %08lx\n", hr);
@@ -1917,8 +1917,8 @@ static void test_get_clipboard_locked(void)
     /* lock clipboard */
     OpenClipboard(NULL);
     hr = OleGetClipboard(&pDObj);
-    todo_wine ok(hr == CLIPBRD_E_CANT_OPEN, "OleGetClipboard() got 0x%08lx instead of 0x%08lx\n", hr, CLIPBRD_E_CANT_OPEN);
-    todo_wine ok(pDObj == NULL, "OleGetClipboard() got 0x%p instead of NULL\n",pDObj);
+    /* todo_wine */ ok(hr == CLIPBRD_E_CANT_OPEN, "OleGetClipboard() got 0x%08lx instead of 0x%08lx\n", hr, CLIPBRD_E_CANT_OPEN);
+    /* todo_wine */ ok(pDObj == NULL, "OleGetClipboard() got 0x%p instead of NULL\n",pDObj);
     if (pDObj) IDataObject_Release(pDObj);
     CloseClipboard();
 
