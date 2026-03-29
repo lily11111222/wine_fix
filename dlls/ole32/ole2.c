@@ -1906,8 +1906,9 @@ HRESULT WINAPI OleSetMenuDescriptor(
     }
     else  /* Want to uninstall dispatching code */
     {
-        /* Uninstall the hooks */
-        if ( !OLEMenu_UnInstallHooks( GetCurrentThreadId() ) )
+        /* Native accepts clearing a frame even when no hooks were installed. */
+        if ( OLEMenu_IsHookInstalled( GetCurrentThreadId() ) &&
+             !OLEMenu_UnInstallHooks( GetCurrentThreadId() ) )
             return E_FAIL;
 
         /* Remove the menu descriptor property from the frame window */

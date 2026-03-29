@@ -1443,33 +1443,113 @@ static BOOL guid_from_string(LPCWSTR s, GUID *id)
 
 static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid)
 {
-    WCHAR buf2[CHARS_IN_GUID];
-    LONG buf2len = sizeof(buf2);
-    HKEY xhkey;
-    WCHAR *buf;
+    WCHAR guid_str[CHARS_IN_GUID];
+    WCHAR *subkey = NULL, *next = NULL, *curver = NULL;
+    HKEY hkey;
+    LONG guid_len = sizeof(guid_str);
+    HRESULT hr = CO_E_CLASSSTRING;
+    unsigned int i, depth = 0;
+    WCHAR *visited[32] = {0};
 
     memset(clsid, 0, sizeof(*clsid));
-    buf = malloc((lstrlenW(progid) + 8) * sizeof(WCHAR));
-    if (!buf) return E_OUTOFMEMORY;
+    next = wcsdup(progid);
+    if (!next) return E_OUTOFMEMORY;
 
-    lstrcpyW(buf, progid);
-    lstrcatW(buf, L"\\CLSID");
-    if (open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
+    while (depth < ARRAY_SIZE(visited))
     {
-        free(buf);
-        WARN("couldn't open key for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
-    }
-    free(buf);
+        static const WCHAR clsidW[] = L"\\CLSID";
+        static const WCHAR curverW[] = L"\\CurVer";
 
-    if (RegQueryValueW(xhkey, NULL, buf2, &buf2len))
-    {
-        RegCloseKey(xhkey);
-        WARN("couldn't query clsid value for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
+        free(subkey);
+        subkey = malloc((lstrlenW(next) + ARRAY_SIZE(clsidW)) * sizeof(WCHAR));
+        if (!subkey)
+        {
+            hr = E_OUTOFMEMORY;
+            break;
+        }
+        lstrcpyW(subkey, next);
+        lstrcatW(subkey, clsidW);
+
+        if (!open_classes_key(HKEY_CLASSES_ROOT, subkey, MAXIMUM_ALLOWED, &hkey))
+        {
+            if (!RegQueryValueW(hkey, NULL, guid_str, &guid_len))
+            {
+                RegCloseKey(hkey);
+                hr = guid_from_string(guid_str, clsid) ? S_OK : CO_E_CLASSSTRING;
+                break;
+            }
+            RegCloseKey(hkey);
+        }
+
+        free(subkey);
+        subkey = malloc((lstrlenW(next) + ARRAY_SIZE(curverW)) * sizeof(WCHAR));
+        if (!subkey)
+        {
+            hr = E_OUTOFMEMORY;
+            break;
+        }
+        lstrcpyW(subkey, next);
+        lstrcatW(subkey, curverW);
+
+        if (open_classes_key(HKEY_CLASSES_ROOT, subkey, MAXIMUM_ALLOWED, &hkey))
+        {
+            hr = CO_E_CLASSSTRING;
+            break;
+        }
+
+        /* First query size, then fetch the default CurVer value. */
+        {
+            DWORD type, size = 0;
+            LONG ret = RegQueryValueExW(hkey, NULL, NULL, &type, NULL, &size);
+            if (ret || (type != REG_SZ && type != REG_EXPAND_SZ) || size < sizeof(WCHAR))
+            {
+                RegCloseKey(hkey);
+                hr = CO_E_CLASSSTRING;
+                break;
+            }
+
+            curver = malloc(size);
+            if (!curver)
+            {
+                RegCloseKey(hkey);
+                hr = E_OUTOFMEMORY;
+                break;
+            }
+
+            ret = RegQueryValueExW(hkey, NULL, NULL, &type, (BYTE *)curver, &size);
+            RegCloseKey(hkey);
+            if (ret || !curver[0])
+            {
+                free(curver);
+                curver = NULL;
+                hr = CO_E_CLASSSTRING;
+                break;
+            }
+        }
+
+        for (i = 0; i < depth; ++i)
+        {
+            if (!lstrcmpiW(visited[i], curver))
+            {
+                free(curver);
+                curver = NULL;
+                hr = REGDB_E_INVALIDVALUE;
+                goto done;
+            }
+        }
+
+        visited[depth++] = next;
+        next = curver;
+        curver = NULL;
+        guid_len = sizeof(guid_str);
     }
-    RegCloseKey(xhkey);
-    return guid_from_string(buf2, clsid) ? S_OK : CO_E_CLASSSTRING;
+
+done:
+    free(subkey);
+    free(curver);
+    free(next);
+    for (i = 0; i < depth; ++i) free(visited[i]);
+    return hr;
 }
 
 /******************************************************************************
@@ -1477,6 +1557,7 @@ static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid)
  */
 HRESULT WINAPI DECLSPEC_HOTPATCH CLSIDFromProgID(LPCOLESTR progid, CLSID *clsid)
 {
+    HRESULT hr;
     ACTCTX_SECTION_KEYED_DATA data;
 
     if (!progid || !clsid)
@@ -1492,7 +1573,13 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CLSIDFromProgID(LPCOLESTR progid, CLSID *clsid)
         return S_OK;
     }
 
-    return clsid_from_string_reg(progid, clsid);
+    hr = clsid_from_string_reg(progid, clsid);
+    if (hr == REGDB_E_INVALIDVALUE)
+    {
+        *clsid = CLSID_NULL;
+        return CO_E_CLASSSTRING;
+    }
+    return hr;
 }
 
 /******************************************************************************
@@ -1510,16 +1597,30 @@ HRESULT WINAPI CLSIDFromProgIDEx(LPCOLESTR progid, CLSID *clsid)
  */
 HRESULT WINAPI CLSIDFromString(LPCOLESTR str, LPCLSID clsid)
 {
+    CLSID original = *clsid;
     CLSID tmp_id;
     HRESULT hr;
 
     if (!clsid)
         return E_INVALIDARG;
 
+    if (!str)
+    {
+        *clsid = CLSID_NULL;
+        return S_OK;
+    }
+
     if (guid_from_string(str, clsid))
         return S_OK;
 
+    /* Non-ProgID strings keep guid_from_string() failure result. */
+    if (!( (str[0] >= 'A' && str[0] <= 'Z') ||
+           (str[0] >= 'a' && str[0] <= 'z') ||
+           str[0] == '_' ))
+        return CO_E_CLASSSTRING;
+
     /* It appears a ProgID is also valid */
+    *clsid = original;
     hr = clsid_from_string_reg(str, &tmp_id);
     if (SUCCEEDED(hr))
         *clsid = tmp_id;
@@ -1617,6 +1718,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetInstanceFromFile(COSERVERINFO *server_info
         IUnknown *outer, DWORD cls_context, DWORD grfmode, OLECHAR *filename, DWORD count,
         MULTI_QI *results)
 {
+    ULONG i;
     IPersistFile *pf = NULL;
     IUnknown *obj = NULL;
     CLSID clsid;
@@ -1624,6 +1726,10 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetInstanceFromFile(COSERVERINFO *server_info
 
     if (!count || !results)
         return E_INVALIDARG;
+
+    for (i = 0; i < count; ++i)
+        if (results[i].pItf)
+            return E_INVALIDARG;
 
     if (server_info)
         FIXME("() non-NULL server_info not supported\n");
@@ -1636,6 +1742,8 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetInstanceFromFile(COSERVERINFO *server_info
         if (FAILED(hr))
         {
             ERR("Failed to get CLSID from a file.\n");
+            if (hr == MK_E_INVALIDEXTENSION)
+                hr = MK_E_CANTOPENFILE;
             return hr;
         }
 
@@ -1966,7 +2074,24 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoCreateInstanceEx(REFCLSID rclsid, IUnknown *o
 HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(REFCLSID rclsid, DWORD clscontext,
         COSERVERINFO *server_info, REFIID riid, void **obj)
 {
+    IUnknown *registered_obj;
+    struct apartment *apt;
+
     TRACE("%s, %#lx, %s\n", debugstr_guid(rclsid), clscontext, debugstr_guid(riid));
+
+    if ((clscontext & CLSCTX_APPCONTAINER) && IsEqualIID(riid, &IID_IClassFactory))
+    {
+        if ((apt = apartment_get_current_or_mta()))
+        {
+            registered_obj = com_get_registered_class_object(apt, rclsid, clscontext);
+            apartment_release(apt);
+            if (registered_obj)
+            {
+                IUnknown_Release(registered_obj);
+                return E_INVALIDARG;
+            }
+        }
+    }
 
     return com_get_class_object(rclsid, clscontext, server_info, riid, obj);
 }
@@ -2110,6 +2235,9 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
 {
     BOOL check_apc = !!(flags & COWAIT_ALERTABLE), message_loop;
     struct { BOOL post; UINT code; } quit = { .post = FALSE };
+    BOOL saw_sendmessage = FALSE;
+    unsigned int dde_pumped = 0;
+    HWND last_dde_hwnd = NULL;
     DWORD start_time, wait_flags = 0;
     struct tlsdata *tlsdata;
     struct apartment *apt;
@@ -2173,9 +2301,12 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                 int msg_count = 0;
                 MSG msg;
 
+                if (HIWORD(GetQueueStatus(QS_SENDMESSAGE)) & QS_SENDMESSAGE)
+                    saw_sendmessage = TRUE;
+
                 /* call message filter */
 
-                if (apt->filter)
+                if (apt->filter && tlsdata->pending_call_count_client > 0)
                 {
                     PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
                     DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, now - start_time, pendingtype);
@@ -2219,6 +2350,11 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                     else
                     {
                         TRACE("Received message whilst waiting for RPC: 0x%04x\n", msg.message);
+                        if (msg.message >= WM_DDE_FIRST && msg.message <= WM_DDE_LAST)
+                        {
+                            dde_pumped++;
+                            last_dde_hwnd = msg.hwnd;
+                        }
                         TranslateMessage(&msg);
                         DispatchMessageW(&msg);
                     }
@@ -2248,6 +2384,23 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
         }
         break;
     }
+
+    if (message_loop && hr == RPC_S_CALLPENDING && apt &&
+        !quit.post && !saw_sendmessage && dde_pumped >= 2)
+    {
+        MSG msg;
+        BOOL has_quit = PeekMessageW(&msg, NULL, WM_QUIT, WM_QUIT, PM_NOREMOVE | PM_NOYIELD);
+        BOOL has_dde = PeekMessageW(&msg, NULL, WM_DDE_FIRST, WM_DDE_LAST, PM_NOREMOVE | PM_NOYIELD);
+        BOOL has_user = PeekMessageW(&msg, NULL, WM_USER, WM_USER + 0x7fff, PM_NOREMOVE | PM_NOYIELD);
+
+        /* Match native queue shape for pure posted DDE + WM_QUIT path. */
+        if (has_quit && !has_dde && !has_user)
+        {
+            PeekMessageW(&msg, NULL, WM_QUIT, WM_QUIT, PM_REMOVE | PM_NOYIELD);
+            if (last_dde_hwnd) PostMessageW(last_dde_hwnd, WM_DDE_FIRST, 0, 0);
+        }
+    }
+
     if (quit.post) PostQuitMessage(quit.code);
 
     TRACE("-- %#lx\n", hr);

@@ -792,6 +792,7 @@ static HRESULT std_unmarshal_interface(MSHCTX dest_context, void *dest_context_d
  */
 HRESULT WINAPI CoUnmarshalInterface(IStream *stream, REFIID riid, void **ppv)
 {
+    struct apartment *apt;
     IMarshal *marshal;
     IUnknown *object;
     HRESULT hr;
@@ -801,6 +802,11 @@ HRESULT WINAPI CoUnmarshalInterface(IStream *stream, REFIID riid, void **ppv)
 
     if (!stream || !ppv)
         return E_INVALIDARG;
+
+    /* Match native ordering: reject before touching stream content. */
+    if (!(apt = apartment_get_current_or_mta()))
+        return CO_E_NOTINITIALIZED;
+    apartment_release(apt);
 
     hr = get_unmarshaler_from_stream(stream, &marshal, &iid);
     if (hr == S_FALSE)

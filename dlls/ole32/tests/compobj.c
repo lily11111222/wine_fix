@@ -526,15 +526,15 @@ static void test_CLSIDFromProgID(void)
     ok(!ret, "Failed to create a test key.\n");
 
     hr = CLSIDFromProgID(L"MyApp.DocumentTest", &clsid);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromProgID(L"MyApp.DocumentTest.1", &clsid);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromProgID(L"MyApp.DocumentTest.2", &clsid);
@@ -552,15 +552,15 @@ static void test_CLSIDFromProgID(void)
     ok(IsEqualCLSID(&clsid, &CLSID_NULL), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromString(L"MyApp.DocumentTest", &clsid);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromString(L"MyApp.DocumentTest.1", &clsid);
-    todo_wine
+    /* todo_wine */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromString(L"MyApp.DocumentTest.2", &clsid);
@@ -569,15 +569,15 @@ static void test_CLSIDFromProgID(void)
 
     clsid = CLSID_StdFont;
     hr = CLSIDFromString(L"MyApp.DocumentTest.3", &clsid);
-    todo_wine
+    /* todo_wine */
     ok(hr == REGDB_E_INVALIDVALUE, "Unexpected hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(IsEqualCLSID(&clsid, &CLSID_StdFont), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     clsid = CLSID_StdFont;
     hr = CLSIDFromString(L"MyApp.DocumentTest.5", &clsid);
     ok(hr == CO_E_CLASSSTRING, "Unexpected hr %#lx.\n", hr);
-    todo_wine
+    /* todo_wine */
     ok(IsEqualCLSID(&clsid, &CLSID_StdFont), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     RegDeleteTreeW(HKEY_CLASSES_ROOT, L"MyApp.DocumentTest");
@@ -1006,7 +1006,7 @@ static void test_ole_menu(void)
 
 	hwndFrame = CreateWindowA((LPCSTR)MAKEINTATOM(register_dummy_class()), "Test", 0, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, NULL, NULL);
 	hr = OleSetMenuDescriptor(NULL, hwndFrame, NULL, NULL, NULL);
-	todo_wine ok_ole_success(hr, "OleSetMenuDescriptor");
+	/* todo_wine */ ok_ole_success(hr, "OleSetMenuDescriptor");
 
 	DestroyWindow(hwndFrame);
 }
@@ -1065,7 +1065,7 @@ static DWORD WINAPI MessageFilter_MessagePending(
   DWORD dwPendingType)
 {
     trace("MessagePending\n");
-    todo_wine ok(0, "unexpected call\n");
+    /* todo_wine */ ok(0, "unexpected call\n");
     return PENDINGMSG_WAITNOPROCESS;
 }
 
@@ -1570,7 +1570,7 @@ static void test_CoUnmarshalInterface(void)
     ok_ole_success(hr, "CreateStreamOnHGlobal");
 
     hr = CoUnmarshalInterface(pStream, &IID_IUnknown, (void **)&pProxy);
-    todo_wine
+    /* todo_wine */
     ok(hr == CO_E_NOTINITIALIZED, "CoUnmarshalInterface should have returned CO_E_NOTINITIALIZED instead of 0x%08lx\n", hr);
 
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
@@ -3152,13 +3152,13 @@ static void test_CoWaitForMultipleHandles(void)
     ok(hr == RPC_S_CALLPENDING, "expected RPC_S_CALLPENDING, got 0x%08lx\n", hr);
     ok(index == 0 || broken(index == 0xdeadbeef) /* Win 8 */, "expected index 0, got %lu\n", index);
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
-    todo_wine
+    /* todo_wine */
     ok(success || broken(!success) /* Win 2000/XP/8 */, "PeekMessageA failed, error %lu\n", GetLastError());
     success = PeekMessageA(&msg, hWnd, WM_DDE_FIRST, WM_DDE_FIRST, PM_REMOVE);
     ok(!success, "PeekMessageA succeeded\n");
     memset(&msg, 0, sizeof(msg));
     success = PeekMessageA(&msg, hWnd, WM_QUIT, WM_QUIT, PM_REMOVE);
-    todo_wine
+    /* todo_wine */
     ok(!success || broken(success) /* Win 2000/XP/8 */, "PeekMessageA succeeded\n");
     if (success)
     {
@@ -3920,7 +3920,7 @@ static void test_CoGetInstanceFromFile(void)
     mqi[0].pItf = NULL;
     mqi[0].hr = E_NOTIMPL;
     hr = CoGetInstanceFromFile(NULL, NULL, NULL, CLSCTX_INPROC_SERVER, STGM_READ, (OLECHAR*)filenameW, 1, mqi);
-    todo_wine
+    /* todo_wine */
     ok(hr == MK_E_CANTOPENFILE, "got 0x%08lx\n", hr);
     ok(mqi[0].pItf == NULL, "got %p\n", mqi[0].pItf);
     ok(mqi[0].hr == E_NOINTERFACE, "got 0x%08lx\n", mqi[0].hr);
@@ -3942,7 +3942,7 @@ static void test_CoGetInstanceFromFile(void)
     mqi[0].pItf = (void*)0xdeadbeef;
     mqi[0].hr = S_OK;
     hr = CoGetInstanceFromFile(NULL, clsid, NULL, CLSCTX_INPROC_SERVER, STGM_READ, (OLECHAR*)filenameW, 1, mqi);
-todo_wine {
+/* todo_wine */ {
     ok(hr == E_INVALIDARG, "got 0x%08lx\n", hr);
     ok(mqi[0].pItf == (void*)0xdeadbeef, "got %p\n", mqi[0].pItf);
 }
@@ -3952,7 +3952,7 @@ todo_wine {
     mqi[0].pItf = (void*)0xdeadbeef;
     mqi[0].hr = E_NOTIMPL;
     hr = CoGetInstanceFromFile(NULL, clsid, NULL, CLSCTX_INPROC_SERVER, STGM_READ, (OLECHAR*)filenameW, 1, mqi);
-todo_wine {
+/* todo_wine */ {
     ok(hr == E_INVALIDARG, "got 0x%08lx\n", hr);
     ok(mqi[0].pItf == (void*)0xdeadbeef, "got %p\n", mqi[0].pItf);
     ok(mqi[0].hr == E_NOTIMPL, "got 0x%08lx\n", mqi[0].hr);
@@ -4289,7 +4289,7 @@ static void test_CoCreateInstanceFromApp(void)
 
     hr = CoGetClassObject(&CLSID_WineOOPTest, CLSCTX_INPROC_SERVER | CLSCTX_APPCONTAINER, NULL,
             &IID_IClassFactory, (void **)&unk);
-    todo_wine
+    /* todo_wine */
     ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
 
     hr = CoCreateInstance(&CLSID_WineOOPTest, NULL, CLSCTX_INPROC_SERVER, &IID_IUnknown, (void **)&unk);
