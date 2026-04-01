@@ -122,6 +122,7 @@ struct registered_class
     IUnknown *object;
     DWORD clscontext;
     DWORD flags;
+    BOOL singleuse_consumed;
     unsigned int cookie;
     unsigned int rpcss_cookie;
 };
@@ -150,8 +151,22 @@ IUnknown * com_get_registered_class_object(const struct apartment *apt, REFCLSID
             (clscontext & cur->clscontext) &&
             IsEqualGUID(&cur->clsid, rclsid))
         {
+            if (cur->singleuse_consumed)
+                continue;
+
             object = cur->object;
             IUnknown_AddRef(cur->object);
+
+            /* REGCLS_SINGLEUSE is consumed by first activation, but remains revokable by cookie. */
+            if (!(cur->flags & (REGCLS_MULTIPLEUSE | REGCLS_MULTI_SEPARATE)))
+            {
+                cur->singleuse_consumed = TRUE;
+                if ((cur->clscontext & CLSCTX_LOCAL_SERVER) && cur->rpcss_cookie)
+                {
+                    rpc_revoke_local_server(cur->rpcss_cookie);
+                    cur->rpcss_cookie = 0;
+                }
+            }
             break;
         }
     }
@@ -3255,10 +3270,15 @@ HRESULT WINAPI CoRegisterClassObject(REFCLSID rclsid, IUnknown *object, DWORD cl
 
 static void com_revoke_class_object(struct registered_class *entry)
 {
+    IMarshal *marshal;
+
     list_remove(&entry->entry);
 
-    if (entry->clscontext & CLSCTX_LOCAL_SERVER)
+    if ((entry->clscontext & CLSCTX_LOCAL_SERVER) && entry->rpcss_cookie)
         rpc_revoke_local_server(entry->rpcss_cookie);
+
+    if (SUCCEEDED(IUnknown_QueryInterface(entry->object, &IID_IMarshal, (void **)&marshal)))
+        IMarshal_Release(marshal);
 
     IUnknown_Release(entry->object);
     free(entry);

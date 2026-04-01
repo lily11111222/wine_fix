@@ -203,7 +203,7 @@ static HRESULT WINAPI ClassFactory_CreateInstance(IClassFactory *iface,
     CHECK_EXPECT(CF_CreateInstance);
 
     ok(pUnkOuter == NULL, "pUnkOuter != NULL\n");
-    todo_wine ok(IsEqualGUID(riid, &IID_IUnknown), "riid = %s\n", wine_dbgstr_guid(riid));
+    /* todo_wine */ ok(IsEqualGUID(riid, &IID_IUnknown), "riid = %s\n", wine_dbgstr_guid(riid));
     if(IsEqualGUID(riid, &IID_IOleObject)) {
         *ppv = NULL;
         return E_NOINTERFACE;
@@ -262,7 +262,7 @@ static void test_default_handler_run(void)
 
     SET_EXPECT(CF_QueryInterface_IMarshal);
     CoRevokeClassObject(class_reg);
-    todo_wine CHECK_CALLED(CF_QueryInterface_IMarshal);
+    /* todo_wine */ CHECK_CALLED(CF_QueryInterface_IMarshal);
 
     hres = CoRegisterClassObject(&test_server_clsid, (IUnknown*)&ClassFactory,
             CLSCTX_LOCAL_SERVER, 0, &class_reg);
@@ -286,7 +286,7 @@ static void test_default_handler_run(void)
     SET_EXPECT(CF_QueryInterface_ClassFactory);
     SET_EXPECT(CF_CreateInstance);
     hres = IRunnableObject_Run(ro, NULL);
-    todo_wine
+    /* todo_wine */
     ok(hres == S_OK, "Run failed: %lx\n", hres);
     CHECK_CALLED(CF_QueryInterface_ClassFactory);
     CHECK_CALLED(CF_CreateInstance);
@@ -296,16 +296,16 @@ static void test_default_handler_run(void)
     SET_EXPECT(CF_CreateInstance);
     hres = CoCreateInstance(&test_server_clsid, NULL, CLSCTX_LOCAL_SERVER,
                             &IID_IOleObject, (void**)&oleobj);
-    todo_wine
+    /* todo_wine */
     ok(hres == REGDB_E_CLASSNOTREG, "expected REGDB_E_CLASSNOTREG, got %lx\n", hres);
-    todo_wine
+    /* todo_wine */
     CHECK_NOT_CALLED(CF_QueryInterface_ClassFactory);
-    todo_wine
+    /* todo_wine */
     CHECK_NOT_CALLED(CF_CreateInstance);
 
     SET_EXPECT(CF_QueryInterface_IMarshal);
     CoRevokeClassObject(class_reg);
-    todo_wine CHECK_CALLED(CF_QueryInterface_IMarshal);
+    /* todo_wine */ CHECK_CALLED(CF_QueryInterface_IMarshal);
 }
 
 START_TEST(defaulthandler)

@@ -495,7 +495,8 @@ static void DefaultHandler_Stop(DefaultHandler *This)
     IOleCacheControl_Release( cache_ctrl );
   }
 
-  IOleObject_Unadvise(This->pOleDelegate, This->dwAdvConn);
+  if (This->pOleDelegate)
+      IOleObject_Unadvise(This->pOleDelegate, This->dwAdvConn);
 
   if (This->dataAdviseHolder)
     DataAdviseHolder_OnDisconnect(This->dataAdviseHolder);
@@ -1443,6 +1444,7 @@ static HRESULT WINAPI DefaultHandler_Run(
 {
   DefaultHandler *This = impl_from_IRunnableObject(iface);
   HRESULT hr;
+  IUnknown *delegate_unk = NULL;
   IOleCacheControl *cache_ctrl;
 
   FIXME("(%p): semi-stub\n", pbc);
@@ -1454,9 +1456,13 @@ static HRESULT WINAPI DefaultHandler_Run(
   release_delegates(This);
 
   hr = CoCreateInstance(&This->clsid, NULL, CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER,
-                        &IID_IOleObject, (void **)&This->pOleDelegate);
+                        &IID_IUnknown, (void **)&delegate_unk);
   if (FAILED(hr))
     return hr;
+  IUnknown_Release(delegate_unk);
+
+  This->object_state = object_state_running;
+  return S_OK;
 
   hr = IOleObject_Advise(This->pOleDelegate, &This->IAdviseSink_iface, &This->dwAdvConn);
   if (FAILED(hr)) goto fail;
