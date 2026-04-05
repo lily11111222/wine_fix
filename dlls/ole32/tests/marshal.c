@@ -897,7 +897,7 @@ static void test_marshal_and_unmarshal_invalid(void)
 
     IStream_Seek(pStream, ullZero, STREAM_SEEK_SET, NULL);
     hr = CoUnmarshalInterface(pStream, &IID_IClassFactory, (void **)&pProxy);
-    todo_wine { ok_ole_success(hr, CoUnmarshalInterface); }
+    ok_ole_success(hr, CoUnmarshalInterface);
 
     ok_no_locks();
 
@@ -1166,7 +1166,6 @@ static void test_proxy_marshal_and_unmarshal_weak(void)
 
     IStream_Seek(pStream, ullZero, STREAM_SEEK_SET, NULL);
     hr = CoUnmarshalInterface(pStream, &IID_IClassFactory, (void **)&pProxy2);
-    todo_wine
     ok(hr == CO_E_OBJNOTREG, "CoUnmarshalInterface should return CO_E_OBJNOTREG instead of 0x%08lx\n", hr);
 
     ok_no_locks();
@@ -1556,7 +1555,7 @@ static void test_marshal_channel_buffer(void)
     IUnknown_Release(proxy);
     todo_wine
     CHECK_CALLED(RpcStubBuffer_Disconnect);
-    todo_wine
+    /* todo_wine */
     CHECK_CALLED(RpcProxyBuffer_Disconnect);
 
     hr = CoRevokeClassObject(registration_key);
@@ -2187,12 +2186,9 @@ static void test_tableweak_marshal_releasedata2(void)
 
     IStream_Seek(pStream, ullZero, STREAM_SEEK_SET, NULL);
     hr = CoUnmarshalInterface(pStream, &IID_IClassFactory, (void **)&pProxy);
-    todo_wine
-    {
     ok(hr == CO_E_OBJNOTREG,
        "CoUnmarshalInterface should have failed with CO_E_OBJNOTREG, but returned 0x%08lx instead\n",
        hr);
-    }
     IStream_Release(pStream);
 
     ok_no_locks();
@@ -3898,30 +3894,30 @@ static void test_client_security(void)
     ok_ole_success(hr, "IUnknown_QueryInterface IID_IClientSecurity");
 
     hr = IClientSecurity_QueryBlanket(pCliSec, (IUnknown *)pProxy, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-    todo_wine ok_ole_success(hr, "IClientSecurity_QueryBlanket (all NULLs)");
+    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_QueryBlanket (all NULLs)");
 
     hr = IClientSecurity_QueryBlanket(pCliSec, (IUnknown *)pMarshal, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-    todo_wine ok(hr == E_NOINTERFACE, "IClientSecurity_QueryBlanket with local interface should have returned E_NOINTERFACE instead of 0x%08lx\n", hr);
+    /* todo_wine */ ok(hr == E_NOINTERFACE, "IClientSecurity_QueryBlanket with local interface should have returned E_NOINTERFACE instead of 0x%08lx\n", hr);
 
     hr = IClientSecurity_QueryBlanket(pCliSec, (IUnknown *)pProxy, &dwAuthnSvc, &dwAuthzSvc, &pServerPrincName, &dwAuthnLevel, &dwImpLevel, &pAuthInfo, &dwCapabilities);
-    todo_wine ok_ole_success(hr, "IClientSecurity_QueryBlanket");
+    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_QueryBlanket");
 
     hr = IClientSecurity_SetBlanket(pCliSec, (IUnknown *)pProxy, dwAuthnSvc, dwAuthzSvc, pServerPrincName, dwAuthnLevel, RPC_C_IMP_LEVEL_IMPERSONATE, pAuthInfo, dwCapabilities);
-    todo_wine ok_ole_success(hr, "IClientSecurity_SetBlanket");
+    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_SetBlanket");
 
     hr = IClassFactory_CreateInstance(pProxy, NULL, &IID_IWineTest, &pv);
     ok(hr == E_NOINTERFACE, "COM call should have succeeded instead of returning 0x%08lx\n", hr);
 
     hr = IClientSecurity_SetBlanket(pCliSec, (IUnknown *)pMarshal, dwAuthnSvc, dwAuthzSvc, pServerPrincName, dwAuthnLevel, dwImpLevel, pAuthInfo, dwCapabilities);
-    todo_wine ok(hr == E_NOINTERFACE, "IClientSecurity_SetBlanket with local interface should have returned E_NOINTERFACE instead of 0x%08lx\n", hr);
+    /* todo_wine */ ok(hr == E_NOINTERFACE, "IClientSecurity_SetBlanket with local interface should have returned E_NOINTERFACE instead of 0x%08lx\n", hr);
 
     hr = IClientSecurity_SetBlanket(pCliSec, (IUnknown *)pProxy, 0xdeadbeef, dwAuthzSvc, pServerPrincName, dwAuthnLevel, dwImpLevel, pAuthInfo, dwCapabilities);
-    todo_wine ok(hr == E_INVALIDARG, "IClientSecurity_SetBlanke with invalid dwAuthnSvc should have returned E_INVALIDARG instead of 0x%08lx\n", hr);
+    /* todo_wine */ ok(hr == E_INVALIDARG, "IClientSecurity_SetBlanke with invalid dwAuthnSvc should have returned E_INVALIDARG instead of 0x%08lx\n", hr);
 
     CoTaskMemFree(pServerPrincName);
 
     hr = IClientSecurity_QueryBlanket(pCliSec, pUnknown1, &dwAuthnSvc, &dwAuthzSvc, &pServerPrincName, &dwAuthnLevel, &dwImpLevel, &pAuthInfo, &dwCapabilities);
-    todo_wine ok_ole_success(hr, "IClientSecurity_QueryBlanket(IUnknown)");
+    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_QueryBlanket(IUnknown)");
 
     CoTaskMemFree(pServerPrincName);
 
@@ -4167,7 +4163,7 @@ static void test_local_server(void)
      * class in the registry */
     hr = CoGetClassObject(&CLSID_WineOOPTest, CLSCTX_INPROC_SERVER,
         NULL, &IID_IClassFactory, (LPVOID*)&cf);
-    todo_wine ok(hr == REGDB_E_CLASSNOTREG, "Got hr %#lx.\n", hr);
+    ok(hr == REGDB_E_CLASSNOTREG, "Got hr %#lx.\n", hr);
 
     /* Resume the object suspended above ... */
     hr = CoResumeClassObjects();
@@ -4202,7 +4198,7 @@ static void test_local_server(void)
     /* try to connect again after SCM has suspended registered class objects */
     hr = CoGetClassObject(&CLSID_WineOOPTest, CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER, NULL,
         &IID_IClassFactory, (LPVOID*)&cf);
-    todo_wine ok(hr == CO_E_SERVER_STOPPING || hr == REGDB_E_CLASSNOTREG /* Win10 1709+ */, "Got hr %#lx.\n", hr);
+    ok(hr == CO_E_SERVER_STOPPING || hr == REGDB_E_CLASSNOTREG /* Win10 1709+ */, "Got hr %#lx.\n", hr);
 
     hr = CoRevokeClassObject(cookie);
     ok_ole_success(hr, CoRevokeClassObject);
@@ -4692,9 +4688,7 @@ static void WINAPI TestChannelHook_ClientNotify(
     {
         ok(info->dwServerPid == GetCurrentProcessId(), "dwServerPid was 0x%lx instead of 0x%lx\n", info->dwServerPid, GetCurrentProcessId());
         ok(info->iMethod == method, "iMethod was %ld should be %d\n", info->iMethod, method);
-        todo_wine {
-            ok(info->pObject != NULL, "pObject shouldn't be NULL\n");
-        }
+        ok(info->pObject != NULL, "pObject shouldn't be NULL\n");
         ok(IsEqualGUID(&info->uCausality, &causality), "causality wasn't correct\n");
     }
 

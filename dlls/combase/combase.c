@@ -47,6 +47,7 @@ extern HRESULT WINAPI Ole32DllGetClassObject(REFCLSID rclsid, REFIID riid, void 
 static LONG com_lockcount;
 
 static LONG com_server_process_refcount;
+static BOOL com_local_server_stopping;
 
 struct comclassredirect_data
 {
@@ -152,6 +153,10 @@ IUnknown * com_get_registered_class_object(const struct apartment *apt, REFCLSID
             IsEqualGUID(&cur->clsid, rclsid))
         {
             if (cur->singleuse_consumed)
+                continue;
+
+            if ((cur->flags & REGCLS_SUSPENDED) ||
+                (com_local_server_stopping && (cur->clscontext & CLSCTX_LOCAL_SERVER)))
                 continue;
 
             object = cur->object;
@@ -2017,6 +2022,25 @@ static HRESULT com_get_class_object(REFCLSID rclsid, DWORD clscontext,
             return hr;
         }
     }
+
+    if ((clscontext & CLSCTX_LOCAL_SERVER) && com_local_server_stopping)
+    {
+        struct registered_class *cur;
+
+        EnterCriticalSection(&registered_classes_cs);
+        LIST_FOR_EACH_ENTRY(cur, &registered_classes, struct registered_class, entry)
+        {
+            if ((cur->apartment_id == apt->oxid) && IsEqualGUID(&cur->clsid, rclsid) &&
+                (cur->clscontext & CLSCTX_LOCAL_SERVER))
+            {
+                LeaveCriticalSection(&registered_classes_cs);
+                apartment_release(apt);
+                return REGDB_E_CLASSNOTREG;
+            }
+        }
+        LeaveCriticalSection(&registered_classes_cs);
+    }
+
     apartment_release(apt);
 
     /* Next try out of process */
@@ -3271,6 +3295,7 @@ HRESULT WINAPI CoRegisterClassObject(REFCLSID rclsid, IUnknown *object, DWORD cl
 static void com_revoke_class_object(struct registered_class *entry)
 {
     IMarshal *marshal;
+    BOOL entry_was_local = !!(entry->clscontext & CLSCTX_LOCAL_SERVER);
 
     list_remove(&entry->entry);
 
@@ -3282,6 +3307,23 @@ static void com_revoke_class_object(struct registered_class *entry)
 
     IUnknown_Release(entry->object);
     free(entry);
+
+    if (entry_was_local)
+    {
+        struct registered_class *cur;
+        BOOL any_local = FALSE;
+
+        LIST_FOR_EACH_ENTRY(cur, &registered_classes, struct registered_class, entry)
+        {
+            if (cur->clscontext & CLSCTX_LOCAL_SERVER)
+            {
+                any_local = TRUE;
+                break;
+            }
+        }
+        if (!any_local)
+            com_local_server_stopping = FALSE;
+    }
 }
 
 /* Cleans up rpcss registry */
@@ -3369,6 +3411,8 @@ ULONG WINAPI CoAddRefServerProcess(void)
     TRACE("\n");
 
     EnterCriticalSection(&registered_classes_cs);
+    if (!com_server_process_refcount)
+        com_local_server_stopping = FALSE;
     refs = ++com_server_process_refcount;
     LeaveCriticalSection(&registered_classes_cs);
 
@@ -3389,7 +3433,8 @@ ULONG WINAPI CoReleaseServerProcess(void)
     EnterCriticalSection(&registered_classes_cs);
 
     refs = --com_server_process_refcount;
-    /* FIXME: suspend objects */
+    if (!refs)
+        com_local_server_stopping = TRUE;
 
     LeaveCriticalSection(&registered_classes_cs);
 
@@ -3565,7 +3610,14 @@ HRESULT WINAPI CoSuspendClassObjects(void)
  */
 HRESULT WINAPI CoResumeClassObjects(void)
 {
-    FIXME("stub\n");
+    struct registered_class *cur;
+
+    TRACE("\n");
+
+    EnterCriticalSection(&registered_classes_cs);
+    LIST_FOR_EACH_ENTRY(cur, &registered_classes, struct registered_class, entry)
+        cur->flags &= ~REGCLS_SUSPENDED;
+    LeaveCriticalSection(&registered_classes_cs);
 
     return S_OK;
 }

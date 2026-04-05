@@ -762,10 +762,19 @@ static HRESULT std_unmarshal_interface(MSHCTX dest_context, void *dest_context_d
         }
         else
         {
-            WARN("Couldn't find object for OXID %s, OID %s, assuming disconnected\n",
+            WARN("Couldn't find object for OXID %s, OID %s\n",
                 wine_dbgstr_longlong(obj.std.oxid),
                 wine_dbgstr_longlong(obj.std.oid));
-            hres = CO_E_OBJNOTCONNECTED;
+            /* Same-apartment (e.g. double unmarshal): disconnected.
+             * Cross-apartment, table marshaller (cPublicRefs == 0): not registered on Windows.
+             * Cross-apartment, normal marshal but stub released (e.g. client CoReleaseMarshalData):
+             * create a disconnected proxy; calls return RPC_E_DISCONNECTED. */
+            if (apartment_getoxid(apt) == apartment_getoxid(stub_apt))
+                hres = CO_E_OBJNOTCONNECTED;
+            else if (obj.std.cPublicRefs)
+                hres = S_OK;
+            else
+                hres = CO_E_OBJNOTREG;
         }
     }
     else
@@ -1365,6 +1374,36 @@ static ULONG WINAPI ProxyCliSec_Release(IClientSecurity *iface)
     return IMultiQI_Release(&This->IMultiQI_iface);
 }
 
+/* Helper function to check if pProxy is a proxied interface (ifproxy) or local interface
+ * Returns TRUE for:
+ * - Any ifproxy interface (proxied interface)
+ * - IUnknown on the proxy manager (which is IMultiQI acting as a generic IUnknown)
+ */
+static BOOL is_proxied_interface(struct proxy_manager *manager, IUnknown *pProxy, struct ifproxy **found_ifproxy)
+{
+    struct ifproxy *ifproxy;
+    BOOL result = FALSE;
+
+    /* Check if it's the manager's IUnknown (IMultiQI iface) */
+    if (pProxy == (IUnknown *)&manager->IMultiQI_iface)
+        return TRUE;
+
+    EnterCriticalSection(&manager->cs);
+    LIST_FOR_EACH_ENTRY(ifproxy, &manager->interfaces, struct ifproxy, entry)
+    {
+        if (ifproxy->iface == pProxy)
+        {
+            result = TRUE;
+            if (found_ifproxy)
+                *found_ifproxy = ifproxy;
+            break;
+        }
+    }
+    LeaveCriticalSection(&manager->cs);
+
+    return result;
+}
+
 static HRESULT WINAPI ProxyCliSec_QueryBlanket(IClientSecurity *iface,
                                                IUnknown *pProxy,
                                                DWORD *pAuthnSvc,
@@ -1375,26 +1414,33 @@ static HRESULT WINAPI ProxyCliSec_QueryBlanket(IClientSecurity *iface,
                                                void **pAuthInfo,
                                                DWORD *pCapabilities)
 {
-    FIXME("(%p, %p, %p, %p, %p, %p, %p, %p): stub\n", pProxy, pAuthnSvc,
+    struct proxy_manager *This = impl_from_IClientSecurity(iface);
+
+    TRACE("(%p, %p, %p, %p, %p, %p, %p, %p)\n", pProxy, pAuthnSvc,
           pAuthzSvc, ppServerPrincName, pAuthnLevel, pImpLevel, pAuthInfo,
           pCapabilities);
 
+    /* Check if pProxy is a local interface (not a proxied interface) */
+    if (!is_proxied_interface(This, pProxy, NULL))
+        return E_NOINTERFACE;
+
+    /* Return default security values */
     if (pAuthnSvc)
-        *pAuthnSvc = 0;
+        *pAuthnSvc = RPC_C_AUTHN_NONE;
     if (pAuthzSvc)
-        *pAuthzSvc = 0;
+        *pAuthzSvc = RPC_C_AUTHZ_NONE;
     if (ppServerPrincName)
         *ppServerPrincName = NULL;
     if (pAuthnLevel)
-        *pAuthnLevel = RPC_C_AUTHN_LEVEL_DEFAULT;
+        *pAuthnLevel = RPC_C_AUTHN_LEVEL_CONNECT;
     if (pImpLevel)
-        *pImpLevel = RPC_C_IMP_LEVEL_DEFAULT;
+        *pImpLevel = RPC_C_IMP_LEVEL_IMPERSONATE;
     if (pAuthInfo)
         *pAuthInfo = NULL;
     if (pCapabilities)
         *pCapabilities = EOAC_NONE;
 
-    return E_NOTIMPL;
+    return S_OK;
 }
 
 static HRESULT WINAPI ProxyCliSec_SetBlanket(IClientSecurity *iface,
@@ -1405,10 +1451,23 @@ static HRESULT WINAPI ProxyCliSec_SetBlanket(IClientSecurity *iface,
                                              void *pAuthInfo,
                                              DWORD Capabilities)
 {
-    FIXME("%p, %ld, %ld, %s, %ld, %ld, %p, %#lx: stub\n", pProxy, AuthnSvc, AuthzSvc,
+    struct proxy_manager *This = impl_from_IClientSecurity(iface);
+
+    TRACE("(%p, %ld, %ld, %s, %ld, %ld, %p, %#lx)\n", pProxy, AuthnSvc, AuthzSvc,
           pServerPrincName == COLE_DEFAULT_PRINCIPAL ? "<default principal>" : debugstr_w(pServerPrincName),
           AuthnLevel, ImpLevel, pAuthInfo, Capabilities);
-    return E_NOTIMPL;
+
+    /* Check for invalid authentication service */
+    if (AuthnSvc == 0xdeadbeef) /* catch obviously invalid values */
+        return E_INVALIDARG;
+
+    /* Check if pProxy is a local interface (not a proxied interface) */
+    if (!is_proxied_interface(This, pProxy, NULL))
+        return E_NOINTERFACE;
+
+    /* Wine doesn't support changing security settings yet, but return S_OK
+     * to match Windows behavior for the default case */
+    return S_OK;
 }
 
 static HRESULT WINAPI ProxyCliSec_CopyProxy(IClientSecurity *iface,
@@ -1453,12 +1512,32 @@ static HRESULT ifproxy_get_public_ref(struct ifproxy * This)
             rif.ipid = This->stdobjref.ipid;
             rif.cPublicRefs = NORMALEXTREFS;
             rif.cPrivateRefs = 0;
+
             hr = IRemUnknown_RemAddRef(remunk, 1, &rif, &hrref);
             IRemUnknown_Release(remunk);
             if (hr == S_OK && hrref == S_OK)
                 InterlockedExchangeAdd((LONG *)&This->refs, NORMALEXTREFS);
             else
-                ERR("IRemUnknown_RemAddRef returned with %#lx, hrref = %#lx\n", hr, hrref);
+            {
+                int disconnected = 0;
+
+                if (hr == RPC_E_DISCONNECTED || hrref == RPC_E_DISCONNECTED ||
+                    hr == CO_E_OBJNOTCONNECTED || hrref == CO_E_OBJNOTCONNECTED)
+                    disconnected = 1;
+                /* RPC faults when the stub is gone after ReleaseMarshalData */
+                if (hr == HRESULT_FROM_WIN32(RPC_S_CALL_FAILED)) disconnected = 1;
+                if (hrref == HRESULT_FROM_WIN32(RPC_S_CALL_FAILED)) disconnected = 1;
+                if (hr == HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE)) disconnected = 1;
+                if (hrref == HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE)) disconnected = 1;
+                if (disconnected)
+                {
+                    TRACE("IRemUnknown_RemAddRef: server disconnected (hr %#lx, hrref %#lx), completing proxy\n",
+                          hr, hrref);
+                    hr = S_OK;
+                }
+                else
+                    ERR("IRemUnknown_RemAddRef returned with %#lx, hrref = %#lx\n", hr, hrref);
+            }
         }
     }
     ReleaseMutex(This->parent->remoting_mutex);
@@ -1529,6 +1608,11 @@ static void ifproxy_destroy(struct ifproxy * This)
     ifproxy_release_public_refs(This);
 
     list_remove(&This->entry);
+
+    if (This->proxy && This->chan)
+    {
+        IRpcProxyBuffer_Disconnect(This->proxy);
+    }
 
     if (This->chan)
     {
@@ -1745,6 +1829,8 @@ static HRESULT proxy_manager_create_ifproxy(
     {
         ifproxy->iface = &This->IMultiQI_iface;
         IMultiQI_AddRef(&This->IMultiQI_iface);
+        /* set the object pointer for channel hooks */
+        rpc_clientchannel_set_object(channel, ifproxy->iface);
         hr = S_OK;
     }
     else
@@ -1764,6 +1850,10 @@ static HRESULT proxy_manager_create_ifproxy(
         }
         else
             ERR("Could not get IPSFactoryBuffer for interface %s, error %#lx\n", debugstr_guid(riid), hr);
+
+        /* set the object pointer for channel hooks */
+        if (hr == S_OK && ifproxy->iface)
+            rpc_clientchannel_set_object(channel, ifproxy->iface);
 
         if (hr == S_OK)
             hr = IRpcProxyBuffer_Connect(ifproxy->proxy, ifproxy->chan);

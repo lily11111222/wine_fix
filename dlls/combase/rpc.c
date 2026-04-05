@@ -97,6 +97,7 @@ typedef struct
     DWORD                  server_pid; /* id of server process */
     HANDLE                 event; /* cached event handle */
     IID                    iid; /* IID of the proxy this belongs to */
+    void                  *pObject; /* pointer to the proxy object for channel hooks */
 } ClientRpcChannelBuffer;
 
 struct dispatch_params
@@ -1203,7 +1204,7 @@ static HRESULT WINAPI ClientRpcChannelBuffer_GetBuffer(LPRPCCHANNELBUFFER iface,
     CoGetCurrentLogicalThreadId(&message_state->channel_hook_info.uCausality);
     message_state->channel_hook_info.dwServerPid = This->server_pid;
     message_state->channel_hook_info.iMethod = msg->ProcNum & ~RPC_FLAGS_VALID_BIT;
-    message_state->channel_hook_info.pObject = NULL; /* only present on server-side */
+    message_state->channel_hook_info.pObject = NULL; /* ClientGetSize/ClientFillBuffer called before SendReceive */
     message_state->target_hwnd = NULL;
     message_state->target_tid = 0;
     memset(&message_state->params, 0, sizeof(message_state->params));
@@ -1493,6 +1494,7 @@ static HRESULT WINAPI ClientRpcChannelBuffer_SendReceive(LPRPCCHANNELBUFFER ifac
 
     if (hr == S_OK)
     {
+        message_state->channel_hook_info.pObject = This->pObject; /* set pObject for ClientNotify */
         ChannelHooks_ClientNotify(&message_state->channel_hook_info,
                                   msg->DataRepresentation,
                                   first_wire_orpc_extent,
@@ -1507,6 +1509,11 @@ static HRESULT WINAPI ClientRpcChannelBuffer_SendReceive(LPRPCCHANNELBUFFER ifac
 
     if (hr == S_OK)
         hr = hrFault;
+
+    /* When the stub/interface is gone (e.g. after CoReleaseMarshalData on the server),
+     * the runtime often reports RPC_S_UNKNOWN_IF; map to the COM error used by Windows. */
+    if (hr == HRESULT_FROM_WIN32(RPC_S_UNKNOWN_IF))
+        hr = RPC_E_DISCONNECTED;
 
     TRACE("-- %#lx\n", hr);
 
@@ -1696,10 +1703,18 @@ HRESULT rpc_create_clientchannel(const OXID *oxid, const IPID *ipid,
     This->server_pid = oxid_info->dwPid;
     This->event = NULL;
     This->iid = *iid;
+    This->pObject = NULL;
 
     *chan = &This->super.IRpcChannelBuffer_iface;
 
     return S_OK;
+}
+
+/* set the object pointer for channel hooks ClientNotify */
+void rpc_clientchannel_set_object(IRpcChannelBuffer *chan, void *pObject)
+{
+    ClientRpcChannelBuffer *This = (ClientRpcChannelBuffer *)chan;
+    This->pObject = pObject;
 }
 
 HRESULT rpc_create_serverchannel(DWORD dest_context, void *dest_context_data, IRpcChannelBuffer **chan)

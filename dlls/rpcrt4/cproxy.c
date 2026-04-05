@@ -367,8 +367,14 @@ HRESULT WINAPI NdrProxyErrorHandler(DWORD dwExceptionCode)
 {
   WARN("(0x%08lx): a proxy call failed\n", dwExceptionCode);
 
+  /* From NdrProxySendReceive: RpcRaiseException(hr) may pass HRESULT_FROM_WIN32(RPC_S_UNKNOWN_IF). */
+  if (dwExceptionCode == HRESULT_FROM_WIN32(RPC_S_UNKNOWN_IF))
+    return RPC_E_DISCONNECTED;
+
   if (FAILED(dwExceptionCode))
     return dwExceptionCode;
-  else
-    return HRESULT_FROM_WIN32(dwExceptionCode);
+  /* Win32 RPC status from RaiseException(RPC_STATUS) */
+  if (dwExceptionCode == RPC_S_UNKNOWN_IF)
+    return RPC_E_DISCONNECTED;
+  return HRESULT_FROM_WIN32(dwExceptionCode);
 }
