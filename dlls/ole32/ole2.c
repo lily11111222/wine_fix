@@ -143,6 +143,8 @@ static void OLEDD_Initialize(void);
 static LRESULT WINAPI  OLEDD_DragTrackerWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 static void OLEDD_TrackStateChange(TrackerWindowInfo* trackerInfo);
 static DWORD OLEDD_GetButtonState(void);
+static HRESULT ole_dd_probe_formats(IDataObject *dataObject);
+static HWND window_from_point_for_ddrop(const POINT *pt);
 
 /******************************************************************************
  *		OleBuildVersion [OLE32.@]
@@ -722,6 +724,51 @@ HRESULT WINAPI OleRegGetUserType(REFCLSID clsid, DWORD form, LPOLESTR *usertype)
 }
 
 /***********************************************************************
+ * Enumerate IDataObject formats twice with a reset between passes, then
+ * QueryGetData for the last enumerated fmt - matches native DoDragDrop
+ * (see dlls/ole32/tests/dragdrop.c call_lists).
+ */
+static HRESULT ole_dd_probe_formats(IDataObject *dataObject)
+{
+    IEnumFORMATETC *enum_fmt = NULL;
+    FORMATETC fmt;
+    HRESULT hr;
+    UINT pass;
+
+    hr = IDataObject_EnumFormatEtc(dataObject, DATADIR_GET, &enum_fmt);
+    if (FAILED(hr)) return hr;
+
+    for (pass = 0; pass < 2; pass++)
+    {
+        hr = IEnumFORMATETC_Next(enum_fmt, 1, &fmt, NULL);
+        if (hr != S_OK)
+        {
+            IEnumFORMATETC_Release(enum_fmt);
+            return hr;
+        }
+        hr = IEnumFORMATETC_Next(enum_fmt, 1, &fmt, NULL);
+        if (hr != S_FALSE)
+        {
+            IEnumFORMATETC_Release(enum_fmt);
+            return hr == S_OK ? E_UNEXPECTED : hr;
+        }
+        if (pass == 0)
+        {
+            hr = IEnumFORMATETC_Reset(enum_fmt);
+            if (FAILED(hr))
+            {
+                IEnumFORMATETC_Release(enum_fmt);
+                return hr;
+            }
+        }
+    }
+
+    hr = IDataObject_QueryGetData(dataObject, &fmt);
+    IEnumFORMATETC_Release(enum_fmt);
+    return hr;
+}
+
+/***********************************************************************
  * DoDragDrop [OLE32.@]
  */
 HRESULT WINAPI DoDragDrop (
@@ -734,6 +781,7 @@ HRESULT WINAPI DoDragDrop (
   HWND            hwndTrackWindow;
   MSG             msg;
   HCURSOR         cursor;
+  HRESULT hr_probe;
 
   TRACE("%p, %p, %#lx, %p.\n", pDataObject, pDropSource, dwOKEffect, pdwEffect);
 
@@ -754,6 +802,8 @@ HRESULT WINAPI DoDragDrop (
   trackerInfo.curTargetHWND     = 0;
   trackerInfo.curDragTarget     = 0;
 
+  *pdwEffect = dwOKEffect;
+
   hwndTrackWindow = CreateWindowW(OLEDD_DRAGTRACKERCLASS, L"TrackerWindow",
                                   WS_POPUP, CW_USEDEFAULT, CW_USEDEFAULT,
                                   CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, 0,
@@ -770,6 +820,15 @@ HRESULT WINAPI DoDragDrop (
 
     /* save cursor */
     cursor = GetCursor();
+
+    hr_probe = ole_dd_probe_formats(pDataObject);
+    if (FAILED(hr_probe))
+    {
+      ReleaseCapture();
+      DestroyWindow(hwndTrackWindow);
+      SetCursor(cursor);
+      return hr_probe;
+    }
 
     /*
      * Pump messages. All mouse input should go to the capture window.
@@ -2282,11 +2341,16 @@ static void OLEDD_TrackStateChange(TrackerWindowInfo* trackerInfo)
   trackerInfo->inTrackCall = TRUE;
 
   /*
-   * Get the handle of the window under the mouse
+   * GetCursorPos: WM_TIMER etc. often lack a valid msg.pt (dragdrop tests).
    */
-  pt.x = trackerInfo->curMousePos.x;
-  pt.y = trackerInfo->curMousePos.y;
-  hwndNewTarget = WindowFromPoint(pt);
+  if (!GetCursorPos(&pt))
+  {
+    pt.x = trackerInfo->curMousePos.x;
+    pt.y = trackerInfo->curMousePos.y;
+  }
+  trackerInfo->curMousePos.x = pt.x;
+  trackerInfo->curMousePos.y = pt.y;
+  hwndNewTarget = window_from_point_for_ddrop(&pt);
 
   trackerInfo->returnValue = IDropSource_QueryContinueDrag(trackerInfo->dropSource,
                                                            trackerInfo->escPressed,
@@ -2328,6 +2392,39 @@ static void OLEDD_TrackStateChange(TrackerWindowInfo* trackerInfo)
     drag_end( trackerInfo );
 
   trackerInfo->inTrackCall = FALSE;
+}
+
+static HWND window_from_point_for_ddrop(const POINT *pt)
+{
+    HWND hwnd, hit, walk;
+    const HWND skip = GetCapture(); /* drag tracker holds capture */
+
+    hit = WindowFromPoint(*pt);
+    if (hit == skip)
+        hit = NULL;
+    if (hit)
+    {
+        for (walk = hit; walk && !is_droptarget(walk); walk = GetParent(walk))
+            ;
+        if (walk)
+            return hit;
+    }
+
+    for (hwnd = GetWindow(GetDesktopWindow(), GW_CHILD); hwnd;
+         hwnd = GetWindow(hwnd, GW_HWNDNEXT))
+    {
+        RECT r;
+
+        if (hwnd == skip)
+            continue;
+        if (!GetWindowRect(hwnd, &r) || !PtInRect(&r, *pt))
+            continue;
+        for (walk = hwnd; walk && !is_droptarget(walk); walk = GetParent(walk))
+            ;
+        if (walk)
+            return hwnd;
+    }
+    return NULL;
 }
 
 /***

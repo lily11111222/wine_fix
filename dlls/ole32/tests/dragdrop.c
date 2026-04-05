@@ -83,9 +83,9 @@ static HRESULT check_expect_(enum method func, DWORD expect_param, DWORD *set_pa
 
     do
     {
-        todo_wine_if(call_ptr->called_todo)
-            ok_( file, line )( func == call_ptr->method, "unexpected call %s instead of %s\n",
-                               method_names[func], method_names[call_ptr->method] );
+        /* todo_wine_if(call_ptr->called_todo) */
+        ok_( file, line )( func == call_ptr->method, "unexpected call %s instead of %s\n",
+                           method_names[func], method_names[call_ptr->method] );
         if (call_ptr->method == func) break;
     } while ((++call_ptr)->method != end_seq);
 
