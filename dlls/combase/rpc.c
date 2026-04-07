@@ -1371,12 +1371,15 @@ static HRESULT WINAPI ClientRpcChannelBuffer_SendReceive(LPRPCCHANNELBUFFER ifac
 
     TRACE("%p, iMethod %ld\n", olemsg, olemsg->iMethod);
 
+    if (!apt)
+        return CO_E_NOTINITIALIZED;
+
     hr = ClientRpcChannelBuffer_IsCorrectApartment(This, apt);
     if (hr != S_OK)
     {
         ERR("called from wrong apartment, should have been 0x%s\n",
             wine_dbgstr_longlong(This->oxid));
-        if (apt) apartment_release(apt);
+        apartment_release(apt);
         return RPC_E_WRONG_THREAD;
     }
 

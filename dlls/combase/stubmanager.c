@@ -270,7 +270,12 @@ void stub_manager_disconnect(struct stub_manager *m)
     if (!m->disconnected)
     {
         LIST_FOR_EACH_ENTRY(ifstub, &m->ifstubs, struct ifstub, entry)
+        {
             rpc_unregister_interface(&ifstub->iid, FALSE);
+            /* Call Disconnect on the stub buffer before releasing it */
+            if (ifstub->stubbuffer)
+                IRpcStubBuffer_Disconnect(ifstub->stubbuffer);
+        }
 
         m->disconnected = TRUE;
     }
@@ -281,8 +286,36 @@ void stub_manager_disconnect(struct stub_manager *m)
 static void stub_manager_delete(struct stub_manager *m)
 {
     struct list *cursor;
+    ULONG extra_releases = 0;
+    BOOL notify_external_teardown = FALSE;
 
     TRACE("destroying %p (oid=%s)\n", m, wine_dbgstr_longlong(m->oid));
+
+    /* Apartment shutdown can destroy the stub while extrefs are still non-zero.
+     * Mirror the IExternalConnection notification from the last ext_release.
+     * Skip when CoDisconnectObject (or anything else) already called
+     * stub_manager_disconnect: tests expect IExternalConnection count to remain
+     * until ReleaseMarshalData / further releases. */
+    EnterCriticalSection(&m->lock);
+    if (!m->disconnected && m->extern_conn && (m->extrefs || m->weakrefs))
+    {
+        notify_external_teardown = TRUE;
+        extra_releases = m->extra_conn_refs;
+        m->extrefs = 0;
+        m->weakrefs = 0;
+        m->extra_conn_refs = 0;
+    }
+    LeaveCriticalSection(&m->lock);
+
+    if (notify_external_teardown && m->extern_conn)
+    {
+        IExternalConnection_ReleaseConnection(m->extern_conn, EXTCONN_STRONG, 0, FALSE);
+        while (extra_releases--)
+            IExternalConnection_ReleaseConnection(m->extern_conn, EXTCONN_STRONG, 0, FALSE);
+    }
+
+    /* disconnect all ifstubs before releasing them */
+    stub_manager_disconnect(m);
 
     /* release every ifstub */
     while ((cursor = list_head(&m->ifstubs)))
@@ -430,8 +463,21 @@ ULONG stub_manager_ext_addref(struct stub_manager *m, ULONG refs, BOOL tableweak
 {
     BOOL first_extern_ref;
     ULONG rc;
+    HRESULT hres;
 
     EnterCriticalSection(&m->lock);
+
+    /* The object may start exposing IExternalConnection after the stub manager was
+     * created (e.g. tests toggle dynamic QI). Sync one AddConnection if we already
+     * hold external refs that were accrued while extern_conn was unavailable. */
+    if (!m->extern_conn && (refs || m->extrefs))
+    {
+        hres = IUnknown_QueryInterface(m->object, &IID_IExternalConnection, (void **)&m->extern_conn);
+        if (FAILED(hres))
+            m->extern_conn = NULL;
+        else if (m->extrefs)
+            IExternalConnection_AddConnection(m->extern_conn, EXTCONN_STRONG, 0);
+    }
 
     first_extern_ref = refs && !m->extrefs;
 

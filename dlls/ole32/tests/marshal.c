@@ -1233,10 +1233,10 @@ static void test_proxy_marshal_and_unmarshal_strong(void)
     end_host_object(tid, thread);
 
     ok_no_locks();
-todo_wine {
+    /* todo_wine */
     ok_zero_external_conn();
+    /* todo_wine */
     ok_last_release_closes(FALSE);
-}
 }
 
 /* tests that stubs are released when the containing apartment is destroyed */
@@ -1269,10 +1269,10 @@ static void test_marshal_stub_apartment_shutdown(void)
     end_host_object(tid, thread);
 
     ok_no_locks();
-todo_wine {
+    /* todo_wine */
     ok_zero_external_conn();
+    /* todo_wine */
     ok_last_release_closes(FALSE);
-}
 
     IUnknown_Release(pProxy);
 
@@ -1553,7 +1553,7 @@ static void test_marshal_channel_buffer(void)
     SET_EXPECT(RpcStubBuffer_Disconnect);
     SET_EXPECT(RpcProxyBuffer_Disconnect);
     IUnknown_Release(proxy);
-    todo_wine
+    /* todo_wine */
     CHECK_CALLED(RpcStubBuffer_Disconnect);
     /* todo_wine */
     CHECK_CALLED(RpcProxyBuffer_Disconnect);
@@ -1917,10 +1917,10 @@ static void test_no_couninitialize_server(void)
     ok( !WaitForSingleObject(thread, 10000), "wait timed out\n" );
 
     ok_no_locks();
-todo_wine {
+    /* todo_wine */
     ok_zero_external_conn();
+    /* todo_wine */
     ok_last_release_closes(FALSE);
-}
 
     CloseHandle(thread);
     CloseHandle(ncu_params.marshal_event);
@@ -2690,15 +2690,15 @@ static DWORD CALLBACK bad_thread_proc(LPVOID p)
     }
 
     hr = IClassFactory_CreateInstance(cf, NULL, &IID_IUnknown, (LPVOID*)&proxy);
-    todo_wine ok(hr == CO_E_NOTINITIALIZED, "Got hr %#lx.\n", hr);
+    /* todo_wine */ ok(hr == CO_E_NOTINITIALIZED, "Got hr %#lx.\n", hr);
 
     hr = IClassFactory_QueryInterface(cf, &IID_IMultiQI, (LPVOID *)&proxy);
-    todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+    /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
     if (SUCCEEDED(hr))
         IUnknown_Release(proxy);
 
     hr = IClassFactory_QueryInterface(cf, &IID_IStream, (LPVOID *)&proxy);
-    todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+    /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
     if (SUCCEEDED(hr))
         IUnknown_Release(proxy);
 
@@ -2721,7 +2721,7 @@ static DWORD CALLBACK bad_thread_proc(LPVOID p)
             hr);
 
         hr = IClassFactory_QueryInterface(cf, &IID_IStream, (LPVOID *)&proxy);
-        todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+        /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
 
         hr = pCoDecrementMTAUsage(cookie);
         ok_ole_success(hr, CoDecrementMTAUsage);
@@ -2744,7 +2744,7 @@ static DWORD CALLBACK bad_thread_proc(LPVOID p)
         hr);
 
     hr = IClassFactory_QueryInterface(cf, &IID_IStream, (LPVOID *)&proxy);
-    todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+    /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
 
     CoUninitialize();
 
@@ -2766,7 +2766,7 @@ static DWORD CALLBACK bad_thread_proc(LPVOID p)
         hr);
 
     hr = IClassFactory_QueryInterface(cf, &IID_IStream, (LPVOID *)&proxy);
-    todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+    /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
 
     /* now be really bad and release the proxy from the wrong apartment */
     IClassFactory_Release(cf);
@@ -2803,7 +2803,7 @@ static DWORD CALLBACK bad_thread_proc_sta(LPVOID p)
         hr);
 
     hr = IClassFactory_QueryInterface(cf, &IID_IStream, (LPVOID *)&proxy);
-    todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+    /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
 
     if (pCoIncrementMTAUsage)
     {
@@ -2824,7 +2824,7 @@ static DWORD CALLBACK bad_thread_proc_sta(LPVOID p)
             hr);
 
         hr = IClassFactory_QueryInterface(cf, &IID_IStream, (LPVOID *)&proxy);
-        todo_wine ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
+        /* todo_wine */ ok(hr == RPC_E_WRONG_THREAD, "Got hr %#lx.\n", hr);
 
         hr = pCoDecrementMTAUsage(cookie);
         ok_ole_success(hr, CoDecrementMTAUsage);
@@ -3823,7 +3823,7 @@ static void test_handler_marshaling(void)
 
         /* it's a handler as it supports IOleObject */
         hr = IUnknown_QueryInterface(pProxy, &IID_IOleObject, (void **)&pObject);
-        todo_wine
+        /* todo_wine */
         ok_ole_success(hr, "IUnknown_QueryInterface(&IID_IOleObject)");
         if (SUCCEEDED(hr)) IUnknown_Release(pObject);
 
@@ -3894,13 +3894,13 @@ static void test_client_security(void)
     ok_ole_success(hr, "IUnknown_QueryInterface IID_IClientSecurity");
 
     hr = IClientSecurity_QueryBlanket(pCliSec, (IUnknown *)pProxy, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_QueryBlanket (all NULLs)");
+    ok_ole_success(hr, "IClientSecurity_QueryBlanket (all NULLs)");
 
     hr = IClientSecurity_QueryBlanket(pCliSec, (IUnknown *)pMarshal, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-    /* todo_wine */ ok(hr == E_NOINTERFACE, "IClientSecurity_QueryBlanket with local interface should have returned E_NOINTERFACE instead of 0x%08lx\n", hr);
+    ok(hr == E_NOINTERFACE, "IClientSecurity_QueryBlanket with local interface should have returned E_NOINTERFACE instead of 0x%08lx\n", hr);
 
     hr = IClientSecurity_QueryBlanket(pCliSec, (IUnknown *)pProxy, &dwAuthnSvc, &dwAuthzSvc, &pServerPrincName, &dwAuthnLevel, &dwImpLevel, &pAuthInfo, &dwCapabilities);
-    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_QueryBlanket");
+    ok_ole_success(hr, "IClientSecurity_QueryBlanket");
 
     hr = IClientSecurity_SetBlanket(pCliSec, (IUnknown *)pProxy, dwAuthnSvc, dwAuthzSvc, pServerPrincName, dwAuthnLevel, RPC_C_IMP_LEVEL_IMPERSONATE, pAuthInfo, dwCapabilities);
     /* todo_wine */ ok_ole_success(hr, "IClientSecurity_SetBlanket");
@@ -3917,7 +3917,7 @@ static void test_client_security(void)
     CoTaskMemFree(pServerPrincName);
 
     hr = IClientSecurity_QueryBlanket(pCliSec, pUnknown1, &dwAuthnSvc, &dwAuthzSvc, &pServerPrincName, &dwAuthnLevel, &dwImpLevel, &pAuthInfo, &dwCapabilities);
-    /* todo_wine */ ok_ole_success(hr, "IClientSecurity_QueryBlanket(IUnknown)");
+    ok_ole_success(hr, "IClientSecurity_QueryBlanket(IUnknown)");
 
     CoTaskMemFree(pServerPrincName);
 
