@@ -5253,6 +5253,7 @@ LRESULT destroy_window( HWND hwnd )
     detach_client_surfaces( hwnd );
     if (win->current_drawable) opengl_drawable_release( win->current_drawable );
     if (win->unused_drawable) opengl_drawable_release( win->unused_drawable );
+    free( win->gl_back_snapshot );
     user_driver->pDestroyWindow( hwnd );
 
     free_window_handle( hwnd );
@@ -5378,6 +5379,7 @@ void destroy_thread_windows(void)
         set_user_handle_ptr( handle, NULL );
         free( win->pScroll );
         free( win->text );
+        free( win->gl_back_snapshot );
 
         /* recycle the WND struct as a destroy_entry struct */
         entry = (struct destroy_entry *)win;

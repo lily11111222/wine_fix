@@ -1300,7 +1300,8 @@ void wrap_glReadPixels( TEB *teb, GLint x, GLint y, GLsizei width, GLsizei heigh
         HDC hdc = ULongToHandle( (ULONG_PTR)teb->glReserved1[1] );
         if (!hdc) hdc = ULongToHandle( (ULONG_PTR)teb->glReserved1[0] );
 
-        if (wine_memory_dc_bitmap_crc( hdc, &crc_now ) && ctx->base.mem_dc_dib_crc_valid
+        if (wine_memory_dc_gl_drawable_ready( hdc )
+            && wine_memory_dc_bitmap_crc( hdc, &crc_now ) && ctx->base.mem_dc_dib_crc_valid
             && crc_now != ctx->base.mem_dc_dib_crc
             && wine_read_opengl_memory_dc_pixel( hdc, x, y, &px ))
         {

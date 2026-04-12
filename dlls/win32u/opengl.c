@@ -208,7 +208,7 @@ static UINT32 memory_bitmap_crc32( BITMAPOBJ *bmp )
     const BYTE *p;
     UINT32 hash = 2166136261u;
 
-    if (!init_dib_info_from_bitmapobj( &dib, bmp ) || dib.bit_count != 32) return 0;
+    if (!init_dib_info_from_bitmapobj( &dib, bmp )) return 0;
     nbytes = dib.height * abs( dib.stride );
     for (i = 0, p = dib.bits.ptr; i < nbytes; i++, p++) hash = (hash ^ *p) * 16777619u;
     return hash;
@@ -235,6 +235,22 @@ BOOL wine_memory_dc_bitmap_crc( HDC hdc, UINT32 *out_crc )
     release_dc_ptr( dc );
     *out_crc = crc;
     return TRUE;
+}
+
+BOOL wine_memory_dc_gl_drawable_ready( HDC hdc )
+{
+    DC *dc;
+    BOOL ready = TRUE;
+
+    if (!(dc = get_dc_ptr( hdc ))) return TRUE;
+
+    /* After NtGdiSelectBitmap, opengl_drawable is cleared until flush/make-current recreates
+     * the pbuffer; skip the glReadPixels DIB fast path until then. */
+    if (get_gdi_object_type( hdc ) == NTGDI_OBJ_MEMDC && dc->pixel_format && !dc->opengl_drawable)
+        ready = FALSE;
+
+    release_dc_ptr( dc );
+    return ready;
 }
 
 static void opengl_drawable_set_context( struct opengl_drawable *drawable, struct wgl_context *context )
@@ -1654,6 +1670,63 @@ static BOOL context_unset_current( struct wgl_context *context )
     return FALSE;
 }
 
+static void save_window_gl_snapshot( HWND hwnd )
+{
+    const struct opengl_funcs *funcs = &display_funcs;
+    const struct egl_platform *egl = &display_egl;
+    struct opengl_drawable *draw = NULL;
+    EGLint width = 0, height = 0;
+    WND *win;
+    void *pixels;
+
+    if (!(win = get_win_ptr( hwnd )) || win == WND_DESKTOP || win == WND_OTHER_PROCESS) return;
+    if ((draw = win->current_drawable)) opengl_drawable_add_ref( draw );
+    release_win_ptr( win );
+    if (!draw || !draw->surface) { if (draw) opengl_drawable_release( draw ); return; }
+
+    funcs->p_eglQuerySurface( egl->display, draw->surface, EGL_WIDTH, &width );
+    funcs->p_eglQuerySurface( egl->display, draw->surface, EGL_HEIGHT, &height );
+    opengl_drawable_release( draw );
+    if (width <= 0 || height <= 0) return;
+
+    if (!(pixels = malloc( width * height * 4 ))) return;
+    funcs->p_glReadPixels( 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels );
+
+    if ((win = get_win_ptr( hwnd )) && win != WND_DESKTOP && win != WND_OTHER_PROCESS)
+    {
+        free( win->gl_back_snapshot );
+        win->gl_back_snapshot = pixels;
+        win->gl_snapshot_width = width;
+        win->gl_snapshot_height = height;
+        release_win_ptr( win );
+    }
+    else
+        free( pixels );
+}
+
+static void apply_window_gl_snapshot( HWND hwnd )
+{
+    const struct opengl_funcs *funcs = &display_funcs;
+    void *pixels = NULL;
+    UINT width = 0, height = 0;
+    WND *win;
+
+    if (!(win = get_win_ptr( hwnd )) || win == WND_DESKTOP || win == WND_OTHER_PROCESS) return;
+    pixels = win->gl_back_snapshot;
+    width = win->gl_snapshot_width;
+    height = win->gl_snapshot_height;
+    win->gl_back_snapshot = NULL;
+    win->gl_snapshot_width = 0;
+    win->gl_snapshot_height = 0;
+    release_win_ptr( win );
+
+    if (!pixels || !width || !height) { free( pixels ); return; }
+
+    TRACE( "applying %ux%u GL snapshot to hwnd %p\n", width, height, hwnd );
+    funcs->p_glDrawPixels( width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels );
+    free( pixels );
+}
+
 /* return an updated drawable, recreating one if the window drawables have been invalidated (mostly wineandroid) */
 static struct opengl_drawable *get_updated_drawable( HDC hdc, int format, struct opengl_drawable *drawable )
 {
@@ -1693,7 +1766,11 @@ static BOOL context_sync_drawables( struct wgl_context *context, HDC draw_hdc, H
         return FALSE;
     }
 
-    if (previous == context && new_draw == context->draw && new_read == context->read) ret = TRUE;
+    if (previous == context && new_draw == context->draw && new_read == context->read)
+    {
+        ret = TRUE;
+        if (new_draw->client) apply_window_gl_snapshot( new_draw->client->hwnd );
+    }
     else if (previous)
     {
         context_exchange_drawables( previous, &old_draw, &old_read ); /* take ownership of the previous context drawables */
@@ -1714,6 +1791,10 @@ static BOOL context_sync_drawables( struct wgl_context *context, HDC draw_hdc, H
         /* all good, release previous context drawables if any */
         if (old_draw) opengl_drawable_release( old_draw );
         if (old_read) opengl_drawable_release( old_read );
+
+        /* Apply saved back buffer snapshot from another context that released
+         * on this window, emulating Windows' shared back buffer semantics. */
+        if (new_draw->client) apply_window_gl_snapshot( new_draw->client->hwnd );
 
         opengl_drawable_set_context( new_read, context );
         if (new_read != new_draw) opengl_drawable_set_context( new_draw, context );
@@ -1753,6 +1834,10 @@ static BOOL win32u_wglMakeContextCurrentARB( HDC draw_hdc, HDC read_hdc, struct 
         struct opengl_drawable *draw = NULL, *read = NULL;
 
         if (!(context = prev_context)) return TRUE;
+
+        if (context->draw && context->draw->client)
+            save_window_gl_snapshot( context->draw->client->hwnd );
+
         if (!context_unset_current( context )) return FALSE;
         NtCurrentTeb()->glContext = NULL;
 

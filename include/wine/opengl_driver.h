@@ -200,6 +200,7 @@ W32KAPI void opengl_drawable_add_ref( struct opengl_drawable *drawable );
 W32KAPI void opengl_drawable_release( struct opengl_drawable *drawable );
 W32KAPI BOOL wine_read_opengl_memory_dc_pixel( HDC hdc, GLint x, GLint y, GLuint *out_rgba );
 W32KAPI BOOL wine_memory_dc_bitmap_crc( HDC hdc, UINT32 *crc );
+W32KAPI BOOL wine_memory_dc_gl_drawable_ready( HDC hdc );
 
 /* interface between win32u and the user drivers */
 struct opengl_driver_funcs

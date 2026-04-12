@@ -2701,7 +2701,7 @@ static void test_window_dc(void)
 
     pixel = 0xdeadbeef;
     glReadPixels( 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &pixel );
-    todo_wine ok( pixel == 0xff00ff00, "got %#x\n", pixel );
+    /* todo_wine */ ok( pixel == 0xff00ff00, "got %#x\n", pixel );
     ok_ret( GL_NO_ERROR, glGetError() );
 
 
@@ -2711,7 +2711,7 @@ static void test_window_dc(void)
 
     pixel = 0xdeadbeef;
     glReadPixels( 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &pixel );
-    todo_wine ok( pixel == 0xff00ff00, "got %#x\n", pixel );
+    /* todo_wine */ ok( pixel == 0xff00ff00, "got %#x\n", pixel );
     ok_ret( GL_NO_ERROR, glGetError() );
 
 
