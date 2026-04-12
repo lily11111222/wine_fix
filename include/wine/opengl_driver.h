@@ -79,6 +79,7 @@ struct wgl_context
     struct opengl_drawable *read;               /* currently bound read surface */
     UINT32                  mem_dc_dib_crc;      /* hash of memory-DC bitmap bits after last GL/DIB sync */
     BOOL                    mem_dc_dib_crc_valid;
+    int                     bitmap_bpp;          /* bpp of the bitmap selected at context creation */
 };
 
 /* interface between opengl32 and win32u */

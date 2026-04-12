@@ -1789,7 +1789,7 @@ static void test_bitmap_rendering( BOOL use_dib )
     if (pixels == buffer) read_bitmap_pixels( hdc, bmp, pixels, 4, 4, bpp );
     if (pixels2 == buffer2) read_bitmap_pixels( hdc, bmp2, pixels2, 12, 12, bpp );
     ok( (pixels[0] & 0xffffff) == 0x223344, "got %#x\n", pixels[0] );
-    if (use_dib) todo_wine ok( (pixels2[0] & 0xffffff) == 0x03148, "got %#x\n", pixels2[0] );
+    if (use_dib) /* todo_wine */ ok( (pixels2[0] & 0xffffff) == 0x03148, "got %#x\n", pixels2[0] );
     else ok( (pixels2[0] & 0xffffff) == 0x665544, "got %#x\n", pixels2[0] );
 
     ret = wglMakeCurrent( hdc, hglrc );
@@ -1825,7 +1825,7 @@ static void test_bitmap_rendering( BOOL use_dib )
 
     if (pixels == buffer) read_bitmap_pixels( hdc, bmp, pixels, 4, 4, bpp );
     if (pixels2 == buffer2) read_bitmap_pixels( hdc, bmp2, pixels2, 12, 12, bpp );
-    if (use_dib) todo_wine ok( (pixels[0] & 0xffffff) == 0x45cc, "got %#x\n", pixels[0] );
+    if (use_dib) /* todo_wine */ ok( (pixels[0] & 0xffffff) == 0x45cc, "got %#x\n", pixels[0] );
     else ok( (pixels[0] & 0xffffff) == 0x887766, "got %#x\n", pixels[0] );
     ok( (pixels2[0] & 0xffffff) == 0x667788, "got %#x\n", pixels2[0] );
 

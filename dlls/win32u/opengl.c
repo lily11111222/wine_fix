@@ -1566,8 +1566,33 @@ static BOOL flush_memory_dc( struct wgl_context *context, HDC hdc, BOOL write, v
         if (!map_err)
         {
             int width = info->bmiHeader.biWidth, height = info->bmiHeader.biSizeImage / 4 / width;
-            if (write) funcs->p_glDrawPixels( width, height, GL_BGRA, GL_UNSIGNED_BYTE, bits.ptr );
-            else funcs->p_glReadPixels( 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, bits.ptr );
+
+            if (context->bitmap_bpp == 16)
+            {
+                int count = width * height;
+                USHORT *temp = malloc( count * sizeof(USHORT) );
+                if (temp)
+                {
+                    UINT *bitmap_data = (UINT *)bits.ptr;
+                    int i;
+                    if (write)
+                    {
+                        for (i = 0; i < count; i++) temp[i] = (USHORT)bitmap_data[i];
+                        funcs->p_glDrawPixels( width, height, GL_BGRA, GL_UNSIGNED_SHORT_1_5_5_5_REV, temp );
+                    }
+                    else
+                    {
+                        funcs->p_glReadPixels( 0, 0, width, height, GL_BGRA, GL_UNSIGNED_SHORT_1_5_5_5_REV, temp );
+                        for (i = 0; i < count; i++) bitmap_data[i] = temp[i];
+                    }
+                    free( temp );
+                }
+            }
+            else
+            {
+                if (write) funcs->p_glDrawPixels( width, height, GL_BGRA, GL_UNSIGNED_BYTE, bits.ptr );
+                else funcs->p_glReadPixels( 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, bits.ptr );
+            }
         }
         if (!map_err && info->bmiHeader.biBitCount == 32)
         {
@@ -2483,6 +2508,21 @@ static BOOL win32u_wgl_context_reset( struct wgl_context *context, HDC hdc, stru
         return FALSE;
     }
     context->format = format;
+
+    if (get_gdi_object_type( hdc ) == NTGDI_OBJ_MEMDC)
+    {
+        DC *dc = get_dc_ptr( hdc );
+        if (dc)
+        {
+            BITMAPOBJ *bmp = GDI_GetObjPtr( dc->hBitmap, NTGDI_OBJ_BITMAP );
+            if (bmp)
+            {
+                context->bitmap_bpp = bmp->dib.dsBm.bmBitsPixel;
+                GDI_ReleaseObj( dc->hBitmap );
+            }
+            release_dc_ptr( dc );
+        }
+    }
 
     TRACE( "reset context %p, format %u for driver context %p\n", context, format, context->driver_private );
     return TRUE;
