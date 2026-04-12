@@ -77,6 +77,8 @@ struct wgl_context
     int                     format;             /* pixel format of the context */
     struct opengl_drawable *draw;               /* currently bound draw surface */
     struct opengl_drawable *read;               /* currently bound read surface */
+    UINT32                  mem_dc_dib_crc;      /* hash of memory-DC bitmap bits after last GL/DIB sync */
+    BOOL                    mem_dc_dib_crc_valid;
 };
 
 /* interface between opengl32 and win32u */
@@ -196,6 +198,8 @@ static inline const char *debugstr_opengl_drawable( struct opengl_drawable *draw
 W32KAPI void *opengl_drawable_create( UINT size, const struct opengl_drawable_funcs *funcs, int format, struct client_surface *client );
 W32KAPI void opengl_drawable_add_ref( struct opengl_drawable *drawable );
 W32KAPI void opengl_drawable_release( struct opengl_drawable *drawable );
+W32KAPI BOOL wine_read_opengl_memory_dc_pixel( HDC hdc, GLint x, GLint y, GLuint *out_rgba );
+W32KAPI BOOL wine_memory_dc_bitmap_crc( HDC hdc, UINT32 *crc );
 
 /* interface between win32u and the user drivers */
 struct opengl_driver_funcs

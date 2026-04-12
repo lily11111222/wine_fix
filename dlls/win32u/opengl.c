@@ -51,6 +51,7 @@ struct wgl_pbuffer
     GLint mipmap_level;
     GLenum cube_face;
     int bound_buffer;  /* WGL buffer when bound, 0 when not bound */
+    GLuint bound_texture; /* texture object last used in BindTexImageARB */
 };
 
 static const struct opengl_driver_funcs nulldrv_funcs, *driver_funcs = &nulldrv_funcs;
@@ -144,6 +145,96 @@ void opengl_drawable_release( struct opengl_drawable *drawable )
         if (drawable->client) client_surface_release( drawable->client );
         free( drawable );
     }
+}
+
+BOOL wine_read_opengl_memory_dc_pixel( HDC hdc, GLint x, GLint y, GLuint *out_rgba )
+{
+    DC *dc;
+    BITMAPOBJ *bmp;
+    dib_info dib;
+    BYTE *p;
+    int y_dib;
+
+    if (!out_rgba) return FALSE;
+    *out_rgba = 0;
+
+    if (!(dc = get_dc_ptr( hdc ))) return FALSE;
+    if (get_gdi_object_type( hdc ) != NTGDI_OBJ_MEMDC)
+    {
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+    if (!(bmp = GDI_GetObjPtr( dc->hBitmap, NTGDI_OBJ_BITMAP )))
+    {
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+
+    if (!init_dib_info_from_bitmapobj( &dib, bmp ))
+    {
+        GDI_ReleaseObj( dc->hBitmap );
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+
+    if (dib.bit_count != 32)
+    {
+        GDI_ReleaseObj( dc->hBitmap );
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+
+    if (x < 0 || y < 0 || x >= dib.width || y >= dib.height)
+    {
+        GDI_ReleaseObj( dc->hBitmap );
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+
+    /* OpenGL uses origin bottom-left; DIB coordinates use top-left (see dibdrv get_pixel_ptr_*). */
+    y_dib = dib.height - 1 - y;
+    p = (BYTE *)dib.bits.ptr + (dib.rect.top + y_dib) * dib.stride + (dib.rect.left + x) * 4;
+    *out_rgba = p[2] | ((GLuint)p[1] << 8) | ((GLuint)p[0] << 16) | ((GLuint)p[3] << 24);
+
+    GDI_ReleaseObj( dc->hBitmap );
+    release_dc_ptr( dc );
+    return TRUE;
+}
+
+static UINT32 memory_bitmap_crc32( BITMAPOBJ *bmp )
+{
+    dib_info dib;
+    size_t nbytes, i;
+    const BYTE *p;
+    UINT32 hash = 2166136261u;
+
+    if (!init_dib_info_from_bitmapobj( &dib, bmp ) || dib.bit_count != 32) return 0;
+    nbytes = dib.height * abs( dib.stride );
+    for (i = 0, p = dib.bits.ptr; i < nbytes; i++, p++) hash = (hash ^ *p) * 16777619u;
+    return hash;
+}
+
+BOOL wine_memory_dc_bitmap_crc( HDC hdc, UINT32 *out_crc )
+{
+    DC *dc;
+    BITMAPOBJ *bmp;
+    UINT32 crc;
+
+    if (!out_crc) return FALSE;
+    *out_crc = 0;
+
+    if (!(dc = get_dc_ptr( hdc ))) return FALSE;
+    if (get_gdi_object_type( hdc ) != NTGDI_OBJ_MEMDC || !(bmp = GDI_GetObjPtr( dc->hBitmap, NTGDI_OBJ_BITMAP )))
+    {
+        release_dc_ptr( dc );
+        return FALSE;
+    }
+
+    crc = memory_bitmap_crc32( bmp );
+    GDI_ReleaseObj( dc->hBitmap );
+    release_dc_ptr( dc );
+    *out_crc = crc;
+    return TRUE;
 }
 
 static void opengl_drawable_set_context( struct opengl_drawable *drawable, struct wgl_context *context )
@@ -1451,14 +1542,21 @@ static BOOL flush_memory_dc( struct wgl_context *context, HDC hdc, BOOL write, v
         BITMAPINFO *info = (BITMAPINFO *)buffer;
         struct bitblt_coords src = {0};
         struct gdi_image_bits bits;
+        DWORD map_err;
 
         if (flush) flush();
 
-        if (!get_image_from_bitmap( bmp, info, &bits, &src ))
+        map_err = get_image_from_bitmap( bmp, info, &bits, &src );
+        if (!map_err)
         {
             int width = info->bmiHeader.biWidth, height = info->bmiHeader.biSizeImage / 4 / width;
             if (write) funcs->p_glDrawPixels( width, height, GL_BGRA, GL_UNSIGNED_BYTE, bits.ptr );
             else funcs->p_glReadPixels( 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, bits.ptr );
+        }
+        if (!map_err && info->bmiHeader.biBitCount == 32)
+        {
+            context->mem_dc_dib_crc = memory_bitmap_crc32( bmp );
+            context->mem_dc_dib_crc_valid = TRUE;
         }
         GDI_ReleaseObj( dc->hBitmap );
     }
@@ -1606,6 +1704,7 @@ static BOOL context_sync_drawables( struct wgl_context *context, HDC draw_hdc, H
     if (!ret && (ret = driver_funcs->p_make_current( new_draw, new_read, context->driver_private )))
     {
         NtCurrentTeb()->glContext = context;
+        context->mem_dc_dib_crc_valid = FALSE;
 
         if (old_draw && old_draw != new_draw && old_draw != new_read && old_draw->client)
             set_window_opengl_drawable( old_draw->client->hwnd, old_draw, FALSE );
@@ -1639,25 +1738,6 @@ static BOOL context_sync_drawables( struct wgl_context *context, HDC draw_hdc, H
     if (new_draw) opengl_drawable_release( new_draw );
     if (new_read) opengl_drawable_release( new_read );
     return ret;
-}
-
-static void push_internal_context( struct wgl_context *context, HDC hdc, int format )
-{
-    TRACE( "context %p, hdc %p\n", context, hdc );
-
-    if (!context->internal_context)
-    {
-        driver_funcs->p_context_create( format, context->driver_private, NULL, &context->internal_context );
-        if (!context->internal_context) ERR( "Failed to create internal context\n" );
-    }
-
-    driver_funcs->p_make_current( context->draw, context->read, context->internal_context );
-}
-
-static void pop_internal_context( struct wgl_context *context )
-{
-    TRACE( "context %p\n", context );
-    driver_funcs->p_make_current( context->draw, context->read, context->driver_private );
 }
 
 static BOOL win32u_wglMakeContextCurrentARB( HDC draw_hdc, HDC read_hdc, struct wgl_context *context )
@@ -1993,6 +2073,7 @@ static BOOL win32u_wglBindTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
     {
     case WGL_FRONT_LEFT_ARB:
         if (desc.pfd.dwFlags & PFD_STEREO) source = GL_FRONT_LEFT;
+        else if (desc.pfd.dwFlags & PFD_DOUBLEBUFFER) source = GL_BACK;
         else source = GL_FRONT;
         break;
     case WGL_FRONT_RIGHT_ARB:
@@ -2003,7 +2084,7 @@ static BOOL win32u_wglBindTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
                 RtlSetLastWin32Error( ERROR_INVALID_DATA );
                 return GL_FALSE;
             }
-            source = GL_FRONT;  /* map to front when no stereo and not bound */
+            source = (desc.pfd.dwFlags & PFD_DOUBLEBUFFER) ? GL_BACK : GL_FRONT;
         }
         else
             source = GL_FRONT_RIGHT;
@@ -2052,26 +2133,91 @@ static BOOL win32u_wglBindTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
         return GL_FALSE;
     }
 
+    /* Monoscopic: BindTexImage(FRONT_RIGHT) succeeds but does not populate the texture (matches Windows). */
+    if (buffer == WGL_FRONT_RIGHT_ARB && !(desc.pfd.dwFlags & PFD_STEREO))
+    {
+        pbuffer->bound_buffer = buffer;
+        return GL_TRUE;
+    }
+
     if ((ret = driver_funcs->p_pbuffer_bind( pbuffer->hdc, pbuffer->drawable, source )) != -1)
         return ret;
 
     funcs->p_glGetIntegerv( binding_from_target( pbuffer->texture_target ), &prev_texture );
-    push_internal_context( NtCurrentTeb()->glContext, pbuffer->hdc, format );
+    {
+        struct wgl_context *ctx = NtCurrentTeb()->glContext;
+        struct opengl_drawable *pd = pbuffer->drawable;
 
-    /* Make sure that the prev_texture is set as the current texture state isn't shared
-     * between contexts. After that copy the pbuffer texture data. */
-    funcs->p_glBindTexture( pbuffer->texture_target, prev_texture );
-    funcs->p_glCopyTexImage2D( pbuffer->texture_target, 0, pbuffer->texture_format, 0, 0,
-                                        pbuffer->width, pbuffer->height, 0 );
+        if (!ctx->internal_context)
+        {
+            driver_funcs->p_context_create( format, ctx->driver_private, NULL, &ctx->internal_context );
+            if (!ctx->internal_context)
+            {
+                ERR( "Failed to create internal context\n" );
+                return GL_FALSE;
+            }
+        }
 
-    pop_internal_context( NtCurrentTeb()->glContext );
+        /* Internal context must read from the pbuffer surface, not the window drawable. */
+        opengl_drawable_add_ref( pd );
+        opengl_drawable_add_ref( pd );
+        if (!driver_funcs->p_make_current( pd, pd, ctx->internal_context ))
+        {
+            opengl_drawable_release( pd );
+            opengl_drawable_release( pd );
+            RtlSetLastWin32Error( ERROR_INVALID_OPERATION );
+            return GL_FALSE;
+        }
+
+        /* Make sure that the prev_texture is set as the current texture state isn't shared
+         * between contexts. After that copy the pbuffer texture data. */
+        funcs->p_glBindTexture( pbuffer->texture_target, prev_texture );
+        funcs->p_glReadBuffer( source );
+        funcs->p_glCopyTexImage2D( pbuffer->texture_target, 0, pbuffer->texture_format, 0, 0,
+                                            pbuffer->width, pbuffer->height, 0 );
+
+        driver_funcs->p_make_current( ctx->draw, ctx->read, ctx->driver_private );
+        opengl_drawable_release( pd );
+        opengl_drawable_release( pd );
+    }
+    pbuffer->bound_texture = prev_texture;
     pbuffer->bound_buffer = buffer;
     return GL_TRUE;
 }
 
+static void pbuffer_orphan_teximage( struct wgl_pbuffer *pbuffer )
+{
+    const struct opengl_funcs *funcs = &display_funcs;
+    GLenum target = pbuffer->texture_target, int_fmt = pbuffer->texture_format;
+    GLenum dfmt = (int_fmt == GL_RGBA) ? GL_RGBA : GL_RGB;
+
+    if (!pbuffer->bound_texture) return;
+
+    funcs->p_glBindTexture( target, pbuffer->bound_texture );
+    while (funcs->p_glGetError() != GL_NO_ERROR) {}
+
+    switch (target)
+    {
+    case GL_TEXTURE_2D:
+    case GL_TEXTURE_RECTANGLE_NV:
+        funcs->p_glTexImage2D( target, 0, int_fmt, 0, 0, 0, dfmt, GL_UNSIGNED_BYTE, NULL );
+        break;
+    case GL_TEXTURE_1D:
+        funcs->p_glTexImage1D( target, 0, int_fmt, 0, 0, dfmt, GL_UNSIGNED_BYTE, NULL );
+        break;
+    case GL_TEXTURE_CUBE_MAP:
+        for (GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X; face <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z; face++)
+            funcs->p_glTexImage2D( face, 0, int_fmt, 0, 0, 0, dfmt, GL_UNSIGNED_BYTE, NULL );
+        break;
+    default:
+        WARN( "ReleaseTexImage orphan: unsupported target %#x\n", target );
+    }
+    if (funcs->p_glGetError() != GL_NO_ERROR)
+        WARN( "ReleaseTexImage: glTexImage deallocate failed for target %#x\n", target );
+}
+
 static BOOL win32u_wglReleaseTexImageARB( struct wgl_pbuffer *pbuffer, int buffer )
 {
-    BOOL ret;
     int format = win32u_wglGetPixelFormat( pbuffer->hdc );
     struct wgl_pixel_format desc;
 
@@ -2123,9 +2269,21 @@ static BOOL win32u_wglReleaseTexImageARB( struct wgl_pbuffer *pbuffer, int buffe
         return GL_FALSE;
     }
 
-    ret = !!driver_funcs->p_pbuffer_bind( pbuffer->hdc, pbuffer->drawable, GL_NONE );
-    if (ret) pbuffer->bound_buffer = 0;
-    return ret;
+    {
+        UINT bind_ret = driver_funcs->p_pbuffer_bind( pbuffer->hdc, pbuffer->drawable, GL_NONE );
+
+        if (bind_ret != (UINT)-1)
+        {
+            pbuffer->bound_buffer = 0;
+            return bind_ret;
+        }
+    }
+
+    if (NtCurrentTeb()->glContext && pbuffer->bound_texture)
+        pbuffer_orphan_teximage( pbuffer );
+
+    pbuffer->bound_buffer = 0;
+    return TRUE;
 }
 
 static BOOL win32u_wglSetPbufferAttribARB( struct wgl_pbuffer *pbuffer, const int *attribs )
@@ -2226,6 +2384,7 @@ static BOOL win32u_wgl_context_reset( struct wgl_context *context, HDC hdc, stru
         return FALSE;
     }
     context->driver_private = NULL;
+    context->mem_dc_dib_crc_valid = FALSE;
     if (!hdc) return TRUE;
 
     if ((format = get_dc_pixel_format( hdc, TRUE )) <= 0)

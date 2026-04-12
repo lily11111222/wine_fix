@@ -624,11 +624,9 @@ static void test_pbuffers( HDC old_hdc )
     ret = wglMakeCurrent( pbuffer_dc, rc );
     ok( ret == 1, "got %u\n", ret );
 
-    if (!winetest_platform_is_wine) /* triggers a BadMatch */
-    {
+    /* EGL drivers allow clearing the pbuffer; the old X BadMatch workaround is obsolete for Wine. */
     glClearColor( (float)0x22 / 0xff, (float)0x33 / 0xff, (float)0x44 / 0xff, (float)0x11 / 0xff );
     glClear( GL_COLOR_BUFFER_BIT );
-    }
 
     ret = wglMakeCurrent( 0, 0 );
     ok( ret == 1, "got %u\n", ret );
@@ -688,7 +686,7 @@ static void test_pbuffers( HDC old_hdc )
     ok( value == 16 || broken(value == 0) /* AMD */, "got %u\n", value );
     memset( pixels, 0xcd, sizeof(pixels) );
     glGetTexImage( GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels );
-    todo_wine ok( (pixels[0] & 0xffffff) == 0x443322 || broken(pixels[0] == 0xcdcdcdcd) /* AMD */, "got %#x\n", pixels[0] );
+    /* todo_wine */ ok( (pixels[0] & 0xffffff) == 0x443322 || broken(pixels[0] == 0xcdcdcdcd) /* AMD */, "got %#x\n", pixels[0] );
 
     SetLastError( 0xdeadbeef );
     ret = pwglBindTexImageARB( pbuffer, WGL_FRONT_LEFT_ARB );
@@ -736,7 +734,7 @@ static void test_pbuffers( HDC old_hdc )
     ok( value == 16 || broken(value == 8) /* AMD */, "got %u\n", value );
     memset( pixels, 0xcd, sizeof(pixels) );
     glGetTexImage( GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels );
-    todo_wine ok( (pixels[0] & 0xffffff) == 0x443322 || broken(pixels[0] == 0xa5a5a5a5) /* AMD */, "got %#x\n", pixels[0] );
+    /* todo_wine */ ok( (pixels[0] & 0xffffff) == 0x443322 || broken(pixels[0] == 0xa5a5a5a5) /* AMD */, "got %#x\n", pixels[0] );
 
     ret = pwglReleaseTexImageARB( pbuffer, WGL_FRONT_LEFT_ARB );
     ok( ret == 1 || broken(ret == 0) /* AMD */, "got %u\n", ret );
@@ -746,13 +744,13 @@ static void test_pbuffers( HDC old_hdc )
     ok( value == texture, "got %u\n", value );
     value = 0xdeadbeef;
     glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &value );
-    todo_wine ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
+    /* todo_wine */ ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
     value = 0xdeadbeef;
     glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &value );
-    todo_wine ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
+    /* todo_wine */ ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
     memset( pixels, 0xcd, sizeof(pixels) );
     glGetTexImage( GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels );
-    todo_wine ok( pixels[0] == 0xcdcdcdcd || broken(pixels[0] == 0xa5a5a5a5) /* AMD */, "got %#x\n", pixels[0] );
+    /* todo_wine */ ok( pixels[0] == 0xcdcdcdcd || broken(pixels[0] == 0xa5a5a5a5) /* AMD */, "got %#x\n", pixels[0] );
 
     ret = pwglReleaseTexImageARB( pbuffer, WGL_FRONT_LEFT_ARB );
     ok( ret == 1 || broken(ret == 0) /* AMD */, "got %u\n", ret );
@@ -767,13 +765,13 @@ static void test_pbuffers( HDC old_hdc )
     ok( value == texture, "got %u\n", value );
     value = 0xdeadbeef;
     glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &value );
-    todo_wine ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
+    /* todo_wine */ ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
     value = 0xdeadbeef;
     glGetTexLevelParameteriv( GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &value );
-    todo_wine ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
+    /* todo_wine */ ok( value == 0 || broken(value == 8) /* AMD */, "got %u\n", value );
     memset( pixels, 0xcd, sizeof(pixels) );
     glGetTexImage( GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels );
-    todo_wine ok( pixels[0] == 0xcdcdcdcd || broken(pixels[0] == 0xa5a5a5a5) /* AMD */, "got %#x\n", pixels[0] );
+    /* todo_wine */ ok( pixels[0] == 0xcdcdcdcd || broken(pixels[0] == 0xa5a5a5a5) /* AMD */, "got %#x\n", pixels[0] );
 
     ret = pwglReleaseTexImageARB( pbuffer, WGL_FRONT_RIGHT_ARB );
     ok( ret == 1 || broken(ret == 0) /* AMD */, "got %u\n", ret );
@@ -2092,7 +2090,7 @@ static void test_d3dkmt_rendering(void)
     ok( (pixel & 0xffffff) == 0x223344, "got %#x\n", pixel );
     memset( pixels, 0xa5, sizeof(pixels) );
     glReadPixels( 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &pixel );
-    todo_wine ok( (pixel & 0xffffff) == 0xa5a5a5, "got %#x\n", pixel );
+    /* todo_wine */ ok( (pixel & 0xffffff) == 0xa5a5a5, "got %#x\n", pixel );
     memset( pixels, 0xcd, sizeof(pixels) );
 
     wglDeleteContext( hglrc );

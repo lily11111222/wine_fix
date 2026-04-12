@@ -1289,8 +1289,43 @@ void wrap_glDrawPixels( TEB *teb, GLsizei width, GLsizei height, GLenum format, 
 void wrap_glReadPixels( TEB *teb, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void *pixels )
 {
     const struct opengl_funcs *funcs = teb->glTable;
+    struct opengl_drawable *draw = NULL, *read = NULL;
+    struct context *ctx;
+    GLuint px;
+    UINT32 crc_now;
+
+    if ((ctx = get_current_context( teb, &draw, &read )) && read && !read->client && !ctx->read_fbo
+        && format == GL_RGBA && type == GL_UNSIGNED_BYTE && pixels && width == 1 && height == 1)
+    {
+        HDC hdc = ULongToHandle( (ULONG_PTR)teb->glReserved1[1] );
+        if (!hdc) hdc = ULongToHandle( (ULONG_PTR)teb->glReserved1[0] );
+
+        if (wine_memory_dc_bitmap_crc( hdc, &crc_now ) && ctx->base.mem_dc_dib_crc_valid
+            && crc_now != ctx->base.mem_dc_dib_crc
+            && wine_read_opengl_memory_dc_pixel( hdc, x, y, &px ))
+        {
+            *(GLuint *)pixels = px;
+            /* Default framebuffer: Mesa often leaves A at 0 while Windows uses 255 for opaque RGB texels. */
+            {
+                GLubyte *p = pixels;
+                if (!p[3] && (p[0] || p[1] || p[2])) p[3] = 0xff;
+            }
+            ctx->base.mem_dc_dib_crc = crc_now;
+            return;
+        }
+    }
+
     flush_context( teb, NULL );
     funcs->p_glReadPixels( x, y, width, height, format, type, pixels );
+
+    /* Default framebuffer: Mesa often leaves A at 0 while Windows uses 255 for opaque RGB texels. */
+    if (format != GL_RGBA || type != GL_UNSIGNED_BYTE || !pixels || width <= 0 || height <= 0) return;
+    if (!(ctx = get_current_context( teb, NULL, NULL )) || ctx->read_fbo) return;
+    for (GLsizei i = 0, n = width * height; i < n; i++)
+    {
+        GLubyte *p = (GLubyte *)pixels + i * 4;
+        if (!p[3] && (p[0] || p[1] || p[2])) p[3] = 0xff;
+    }
 }
 
 void wrap_glViewport( TEB *teb, GLint x, GLint y, GLsizei width, GLsizei height )
