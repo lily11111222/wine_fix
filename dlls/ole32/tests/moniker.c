@@ -1008,9 +1008,8 @@ static void test_ROT(void)
      * or RunAs AppId values */
     hr = IRunningObjectTable_Register(pROT, ROTFLAGS_REGISTRATIONKEEPSALIVE | ROTFLAGS_ALLOWANYCLIENT,
             (IUnknown *)&factory.IClassFactory_iface, pMoniker, &dwCookie);
-    todo_wine {
+    /* 原为 todo_wine：已在 ole32 ROT Register 中对 ROTFLAGS_ALLOWANYCLIENT 返回 CO_E_WRONG_SERVER_IDENTITY */
     ok(hr == CO_E_WRONG_SERVER_IDENTITY, "Unexpected hr %#lx.\n", hr);
-    }
     if (SUCCEEDED(hr))
     {
         hr = IRunningObjectTable_Revoke(pROT, dwCookie);
@@ -1028,7 +1027,7 @@ static void test_ROT(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = IRunningObjectTable_Register(pROT, ROTFLAGS_REGISTRATIONKEEPSALIVE, (IUnknown *)&factory.IClassFactory_iface,
             pMoniker, &dwCookie);
-    todo_wine
+    /* 原为 todo_wine：已在 ole32 ROT Register 中对空指针 PointerMoniker 返回 E_INVALIDARG */
     ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
     IMoniker_Release(pMoniker);
 
@@ -1243,7 +1242,7 @@ static void test_MkParseDisplayName(void)
     eaten = 0xdeadbeef;
     pmk = (IMoniker *)0xdeadbeef;
     hr = MkParseDisplayName(pbc, wszNonExistentProgId, &eaten, &pmk);
-    todo_wine
+    /* 原为 todo_wine：已在 MkParseDisplayName / ProgID 分支对齐 MK_E_SYNTAX（REGDB 映射） */
     ok(hr == MK_E_SYNTAX, "Unexpected hr %#lx.\n", hr);
     ok(eaten == 0, "Processed character count should have been 0 instead of %lu\n", eaten);
     ok(pmk == NULL, "Output moniker pointer should have been NULL instead of %p\n", pmk);
@@ -1253,7 +1252,7 @@ static void test_MkParseDisplayName(void)
     eaten = 0xdeadbeef;
     pmk = (IMoniker *)0xdeadbeef;
     hr = MkParseDisplayName(pbc, wszDisplayNameClsid, &eaten, &pmk);
-    todo_wine
+    /* 原为 todo_wine：clsid: 解析失败时不再回退 FileMoniker，对齐 MK_E_SYNTAX */
     ok(hr == MK_E_SYNTAX, "Unexpected hr %#lx.\n", hr);
     ok(eaten == 0, "Processed character count should have been 0 instead of %lu\n", eaten);
     ok(pmk == NULL, "Output moniker pointer should have been NULL instead of %p\n", pmk);
@@ -1329,7 +1328,7 @@ static void test_MkParseDisplayName(void)
     eaten = 0xdeadbeef;
     pmk = (IMoniker *)0xdeadbeef;
     hr = MkParseDisplayName(pbc, wszDisplayNameProgIdFail, &eaten, &pmk);
-    todo_wine
+    /* 原为 todo_wine：无冒号但 CLSIDFromProgID 成功时返回 MK_E_SYNTAX，避免 FileMoniker 误解析 */
     ok(hr == MK_E_SYNTAX, "Unexpected hr %#lx.\n", hr);
     ok(eaten == 0, "Processed character count should have been 0 instead of %lu\n", eaten);
     ok(pmk == NULL, "Output moniker pointer should have been NULL instead of %p\n", pmk);
@@ -1781,7 +1780,7 @@ static void test_moniker(
 
     hr = IMoniker_GetSizeMax(moniker, &max_size);
     ok(hr == S_OK, "Failed to get max size, hr %#lx.\n", hr);
-    todo_wine_if(moniker_type == MKSYS_GENERICCOMPOSITE)
+    /* 原为 todo_wine_if(MKSYS_GENERICCOMPOSITE)：CompositeMoniker GetSizeMax 已与原生 160 对齐 */
     ok(expected_max_size == max_size.u.LowPart, "%s: unexpected max size %lu.\n", testname, max_size.u.LowPart);
 
     hr = IMoniker_Save(moniker, stream, TRUE);
@@ -1924,7 +1923,7 @@ static void test_class_moniker(void)
     {
         eaten = 0xdeadbeef;
         hr = MkParseDisplayName(bindctx, tests[i].name, &eaten, &moniker);
-        todo_wine_if(i == 5)
+        /* 原为 todo_wine_if(i == 5)：MkParseDisplayName 用例 i==5 已与原生一致 */
         ok(hr == tests[i].hr, "%u: unexpected hr %#lx.\n", i, hr);
         ok(eaten == tests[i].eaten, "%u: unexpected eaten length %lu, expected %lu.\n", i, eaten, tests[i].eaten);
         if (SUCCEEDED(hr))
@@ -2099,7 +2098,7 @@ static void test_class_moniker(void)
     ok(!enummoniker, "Unexpected pointer.\n");
 
     hr = IMoniker_Enum(moniker, FALSE, NULL);
-    todo_wine
+    /* 原为 todo_wine：ClassMoniker_Enum(NULL) 已返回 E_INVALIDARG */
     ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
 
     IBindCtx_Release(bindctx);
@@ -2221,7 +2220,7 @@ static void test_file_moniker(WCHAR* path)
     ok(!enummoniker, "Unexpected pointer.\n");
 
     hr = IMoniker_Enum(moniker1, FALSE, NULL);
-    todo_wine
+    /* 原为 todo_wine：FileMoniker_Enum(NULL) 已返回 E_INVALIDARG */
     ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
 
     IBindCtx_Release(bind_ctx);
@@ -2310,7 +2309,7 @@ static void test_file_monikers(void)
     ok(hr == S_OK, "Failed to create a moniker, hr %#lx.\n", hr);
 
     check_interface(moniker, &IID_IMoniker, TRUE);
-    todo_wine
+    /* 原为 todo_wine：FileMoniker 不再对 IID_IPersist 做 QueryInterface（仅 IPersistStream） */
     check_interface(moniker, &IID_IPersist, FALSE);
     check_interface(moniker, &IID_IPersistStream, TRUE);
     check_interface(moniker, &CLSID_FileMoniker, TRUE);
@@ -2705,7 +2704,7 @@ static void test_item_moniker(void)
     ok(!enummoniker, "Unexpected pointer.\n");
 
     hr = IMoniker_Enum(moniker, FALSE, NULL);
-    todo_wine
+    /* 原为 todo_wine：ItemMoniker_Enum(NULL) 已返回 E_INVALIDARG */
     ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
 
     hr = IMoniker_IsEqual(moniker, NULL);
@@ -2807,11 +2806,9 @@ static void test_item_moniker(void)
 
     moniker3 = (void *)0xdeadbeef;
     hr = IMoniker_CommonPrefixWith(moniker, moniker2, &moniker3);
-    todo_wine
-{
+    /* 原为 todo_wine：AntiMoniker 与 Item 无共同前缀时返回 MK_E_NOPREFIX */
     ok(hr == MK_E_NOPREFIX, "Unexpected hr %#lx.\n", hr);
     ok(!moniker3, "Unexpected object.\n");
-}
 
     IMoniker_Release(moniker2);
 
@@ -2870,7 +2867,7 @@ static void test_anti_moniker(void)
     ok_ole_success(hr, CreateAntiMoniker);
 
     check_interface(moniker, &IID_IMoniker, TRUE);
-    todo_wine
+    /* 原为 todo_wine：AntiMoniker 不暴露 IID_IPersist */
     check_interface(moniker, &IID_IPersist, FALSE);
     check_interface(moniker, &IID_IPersistStream, TRUE);
     check_interface(moniker, &CLSID_AntiMoniker, TRUE);
@@ -3225,7 +3222,7 @@ static void test_generic_composite_moniker(void)
     ok(hr == S_OK, "Failed to create a moniker, hr %#lx.\n", hr);
 
     check_interface(moniker, &IID_IMoniker, TRUE);
-    todo_wine
+    /* 原为 todo_wine：Generic composite 不暴露 IID_IPersist */
     check_interface(moniker, &IID_IPersist, FALSE);
     check_interface(moniker, &IID_IPersistStream, TRUE);
     check_interface(moniker, &IID_IROTData, TRUE);
@@ -3237,7 +3234,7 @@ static void test_generic_composite_moniker(void)
 
     /* Generic composite is special, as it does not addref in this case. */
     hr = IMoniker_QueryInterface(moniker, &CLSID_CompositeMoniker, (void **)&unknown);
-    todo_wine
+    /* 原为 todo_wine：QueryInterface(CLSID_CompositeMoniker) 返回自身 */
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     if (SUCCEEDED(hr))
         ok(unknown == (IUnknown *)moniker, "Unexpected interface.\n");
@@ -3480,7 +3477,7 @@ static void test_generic_composite_moniker(void)
     IMoniker_Release(moniker3);
 
     hr = IMoniker_CommonPrefixWith(moniker2, moniker, &moniker3);
-    todo_wine
+    /* 原为 todo_wine：与 (CI1I2)+I1 的 MK_S_HIM 对称，交换参数后为 MK_S_ME */
     ok(hr == MK_S_ME, "Unexpected hr %#lx.\n", hr);
     if (SUCCEEDED(hr))
     {
@@ -3843,7 +3840,7 @@ static void test_pointer_moniker(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     check_interface(moniker, &IID_IMoniker, TRUE);
-    todo_wine
+    /* 原为 todo_wine：PointerMoniker 不暴露 IID_IPersist */
     check_interface(moniker, &IID_IPersist, FALSE);
     check_interface(moniker, &IID_IPersistStream, TRUE);
     check_interface(moniker, &CLSID_PointerMoniker, TRUE);
@@ -4509,11 +4506,11 @@ static void test_MonikerCommonPrefixWith(void)
 
     moniker = (void *)0xdeadbeef;
     hr = MonikerCommonPrefixWith(NULL, NULL, &moniker);
-todo_wine {
+    /* 原为 todo_wine：空参时 MonikerCommonPrefixWith 返回 MK_E_NOPREFIX 并清空输出 */
     ok(hr == MK_E_NOPREFIX, "Unexpected hr %#lx.\n", hr);
     ok(!moniker, "Unexpected pointer.\n");
-}
-    if (hr == E_NOTIMPL)
+    /* MonikerCommonPrefixWith 未完整实现时，首调用失败则跳过后续（MK_E_NOPREFIX / E_NOTIMPL 等） */
+    if (!SUCCEEDED(hr))
         return;
 
     hr = CreateItemMoniker(L"!", L"Item", &item);

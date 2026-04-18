@@ -82,7 +82,6 @@ static HRESULT WINAPI FileMonikerImpl_QueryInterface(IMoniker *iface, REFIID rii
     *ppvObject = 0;
 
     if (IsEqualIID(&IID_IUnknown, riid)      ||
-        IsEqualIID(&IID_IPersist, riid)      ||
         IsEqualIID(&IID_IPersistStream,riid) ||
         IsEqualIID(&IID_IMoniker, riid) ||
         IsEqualGUID(&CLSID_FileMoniker, riid))
@@ -808,7 +807,7 @@ FileMonikerImpl_Enum(IMoniker* iface,BOOL fForward, IEnumMoniker** ppenumMoniker
     TRACE("(%p,%d,%p)\n",iface,fForward,ppenumMoniker);
 
     if (ppenumMoniker == NULL)
-        return E_POINTER;
+        return E_INVALIDARG;
 
     *ppenumMoniker = NULL;
 

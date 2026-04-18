@@ -50,4 +50,6 @@ HRESULT MonikerMarshal_Create(IMoniker *inner, IUnknown **outer);
 BOOL is_anti_moniker(IMoniker *iface, DWORD *order);
 HRESULT create_anti_moniker(DWORD order, IMoniker **ret);
 
+BOOL WINAPI pointer_moniker_is_null_object(IMoniker *iface);
+
 #endif /* __WINE_MONIKER_H__ */

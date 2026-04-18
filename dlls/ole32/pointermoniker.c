@@ -69,7 +69,6 @@ static HRESULT WINAPI PointerMonikerImpl_QueryInterface(IMoniker *iface, REFIID 
     *ppvObject = 0;
 
     if (IsEqualIID(&IID_IUnknown, riid) ||
-        IsEqualIID(&IID_IPersist, riid) ||
         IsEqualIID(&IID_IPersistStream, riid) ||
         IsEqualIID(&IID_IMoniker, riid) ||
         IsEqualGUID(&CLSID_PointerMoniker, riid))
@@ -474,6 +473,13 @@ static PointerMonikerImpl *unsafe_impl_from_IMoniker(IMoniker *iface)
     return CONTAINING_RECORD(iface, PointerMonikerImpl, IMoniker_iface);
 }
 
+BOOL WINAPI pointer_moniker_is_null_object(IMoniker *iface)
+{
+    PointerMonikerImpl *moniker = unsafe_impl_from_IMoniker(iface);
+
+    return moniker && moniker->pObject == NULL;
+}
+
 static HRESULT WINAPI pointer_moniker_marshal_QueryInterface(IMarshal *iface, REFIID riid, LPVOID *ppv)
 {
     PointerMonikerImpl *moniker = impl_from_IMarshal(iface);
@@ -672,7 +678,6 @@ static HRESULT WINAPI ObjrefMonikerImpl_QueryInterface(IMoniker *iface, REFIID i
     *obj = 0;
 
     if (IsEqualIID(iid, &IID_IUnknown) ||
-        IsEqualIID(iid, &IID_IPersist) ||
         IsEqualIID(iid, &IID_IPersistStream) ||
         IsEqualIID(iid, &IID_IMoniker) ||
         IsEqualGUID(iid, &CLSID_ObjrefMoniker) ||

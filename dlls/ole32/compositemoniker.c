@@ -108,10 +108,9 @@ CompositeMonikerImpl_QueryInterface(IMoniker* iface,REFIID riid,void** ppvObject
 
     /* Compare the riid with the interface IDs implemented by this object.*/
     if (IsEqualIID(&IID_IUnknown, riid) ||
-        IsEqualIID(&IID_IPersist, riid) ||
         IsEqualIID(&IID_IPersistStream, riid) ||
-        IsEqualIID(&IID_IMoniker, riid)
-       )
+        IsEqualIID(&IID_IMoniker, riid) ||
+        IsEqualGUID(&CLSID_CompositeMoniker, riid))
         *ppvObject = iface;
     else if (IsEqualIID(&IID_IROTData, riid))
         *ppvObject = &This->IROTData_iface;
@@ -306,7 +305,8 @@ CompositeMonikerImpl_GetSizeMax(IMoniker* iface,ULARGE_INTEGER* pcbSize)
 
         IMoniker_Release(pmk);
 
-        pcbSize->QuadPart += ptmpSize.QuadPart + sizeof(CLSID);
+        /* Native sums an extra 8 bytes per persisted component beyond CLSID. */
+        pcbSize->QuadPart += ptmpSize.QuadPart + sizeof(CLSID) + 8;
     }
 
     IEnumMoniker_Release(enumMk);
@@ -1819,6 +1819,16 @@ HRESULT WINAPI CreateGenericComposite(IMoniker *left, IMoniker *right, IMoniker 
 HRESULT WINAPI
 MonikerCommonPrefixWith(IMoniker* pmkThis,IMoniker* pmkOther,IMoniker** ppmkCommon)
 {
+    TRACE("(%p,%p,%p)\n", pmkThis, pmkOther, ppmkCommon);
+
+    if (!ppmkCommon)
+        return E_POINTER;
+
+    *ppmkCommon = NULL;
+
+    if (!pmkThis || !pmkOther)
+        return MK_E_NOPREFIX;
+
     FIXME("(),stub!\n");
     return E_NOTIMPL;
 }

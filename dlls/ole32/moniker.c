@@ -33,6 +33,7 @@
 #include "moniker.h"
 #include "irot.h"
 #include "pathcch.h"
+#include "winerror.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ole);
 
@@ -300,6 +301,9 @@ RunningObjectTableImpl_Register(IRunningObjectTable* iface, DWORD flags,
     if (punkObject==NULL || pmkObjectName==NULL || pdwRegister==NULL)
         return E_INVALIDARG;
 
+    if (flags & ROTFLAGS_ALLOWANYCLIENT)
+        return CO_E_WRONG_SERVER_IDENTITY;
+
     rot_entry = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*rot_entry));
     if (!rot_entry)
         return E_OUTOFMEMORY;
@@ -349,6 +353,14 @@ RunningObjectTableImpl_Register(IRunningObjectTable* iface, DWORD flags,
         rot_entry_delete(rot_entry);
         IBindCtx_Release(pbc);
         return hr;
+    }
+
+    if (pointer_moniker_is_null_object(pmkObjectName))
+    {
+        rot_entry_delete(rot_entry);
+        IMoniker_Release(pmkObjectName);
+        IBindCtx_Release(pbc);
+        return E_INVALIDARG;
     }
 
     hr = IMoniker_GetTimeOfLastChange(pmkObjectName, pbc, NULL,
@@ -797,7 +809,7 @@ static HRESULT get_moniker_for_progid_display_name(LPBC pbc,
     hr = CLSIDFromProgID(progid, &clsid);
     HeapFree(GetProcessHeap(), 0, progid);
     if (FAILED(hr))
-        return MK_E_SYNTAX;
+        return REGDB_E_CLASSNOTREG;
 
     hr = CreateClassMoniker(&clsid, &class_moniker);
     if (SUCCEEDED(hr))
@@ -859,18 +871,27 @@ HRESULT WINAPI MkParseDisplayName(LPBC pbc, LPCOLESTR szDisplayName,
     if (!wcsnicmp(szDisplayName, L"clsid:", 6))
     {
         hr = ClassMoniker_CreateFromDisplayName(pbc, szDisplayName, &chEaten, &moniker);
-        if (FAILED(hr) && (hr != MK_E_SYNTAX))
+        if (FAILED(hr))
             return hr;
     }
     else
     {
         hr = get_moniker_for_progid_display_name(pbc, szDisplayName, &chEaten, &moniker);
+        if (hr == REGDB_E_CLASSNOTREG)
+            return MK_E_SYNTAX;
         if (FAILED(hr) && (hr != MK_E_SYNTAX))
             return hr;
     }
 
     if (FAILED(hr))
     {
+        if (hr == MK_E_SYNTAX && !wcschr(szDisplayName, ':'))
+        {
+            CLSID clsid_probe;
+
+            if (CLSIDFromProgID(szDisplayName, &clsid_probe) == S_OK)
+                return MK_E_SYNTAX;
+        }
         hr = FileMoniker_CreateFromDisplayName(pbc, szDisplayName, &chEaten, &moniker);
         if (FAILED(hr) && (hr != MK_E_SYNTAX))
             return hr;

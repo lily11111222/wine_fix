@@ -82,7 +82,6 @@ AntiMonikerImpl_QueryInterface(IMoniker* iface,REFIID riid,void** ppvObject)
     *ppvObject = 0;
 
     if (IsEqualIID(&IID_IUnknown, riid) ||
-        IsEqualIID(&IID_IPersist, riid) ||
         IsEqualIID(&IID_IPersistStream, riid) ||
         IsEqualIID(&IID_IMoniker, riid) ||
         IsEqualGUID(&CLSID_AntiMoniker, riid))

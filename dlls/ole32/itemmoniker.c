@@ -147,7 +147,6 @@ static HRESULT WINAPI ItemMonikerImpl_QueryInterface(IMoniker *iface, REFIID rii
         return E_INVALIDARG;
 
     if (IsEqualIID(&IID_IUnknown, riid) ||
-        IsEqualIID(&IID_IPersist, riid) ||
         IsEqualIID(&IID_IPersistStream, riid) ||
         IsEqualIID(&IID_IMoniker, riid) ||
         IsEqualGUID(&CLSID_ItemMoniker, riid))
@@ -529,7 +528,7 @@ static HRESULT WINAPI ItemMonikerImpl_Enum(IMoniker* iface,BOOL fForward, IEnumM
     TRACE("(%p,%d,%p)\n",iface,fForward,ppenumMoniker);
 
     if (ppenumMoniker == NULL)
-        return E_POINTER;
+        return E_INVALIDARG;
 
     *ppenumMoniker = NULL;
 
